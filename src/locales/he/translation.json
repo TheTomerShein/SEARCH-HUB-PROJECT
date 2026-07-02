@@ -1,0 +1,94 @@
+{
+  "app": {
+    "title": "חיפוש חומרים MDG"
+  },
+  "materialSearch": {
+    "search": "חיפוש",
+    "filters": {
+      "title": "סינון מתקדם",
+      "materialNumber": "מספר חומר (MATNR)",
+      "description": "תיאור חומר",
+      "materialType": "סוג חומר (MTART)",
+      "baseUnit": "יחידת מידה בסיסית",
+      "onlyActive": "הצג חומרים פעילים בלבד",
+      "createdRange": "טווח תאריכי יצירה",
+      "startDate": "מתאריך",
+      "endDate": "עד תאריך",
+      "plants": "מפעלים (WERKS)",
+      "matchAny": "לפחות אחד (OR)",
+      "matchAll": "את כולם (AND)",
+      "clearFilters": "נקה סינונים",
+      "searchPlaceholder": "חיפוש חופשי..."
+    },
+    "savedSearches": {
+      "title": "חיפושים שמורים",
+      "select": "בחר חיפוש שמור",
+      "saveCurrent": "שמור חיפוש נוכחי",
+      "saveTitle": "שמור חיפוש נוכחי",
+      "nameLabel": "שם החיפוש",
+      "cancel": "ביטול",
+      "save": "שמור"
+    },
+    "actions": {
+      "exportExcel": "ייצוא לאקסל",
+      "copyMaterials": "העתק חומרים",
+      "copyMaterialsSelected": "העתק חומרים ({{count}})",
+      "materialsCopied": "החומרים הועתקו ללוח בהצלחה!"
+    },
+    "results": {
+      "count": "נמצאו {{count}} רשומות",
+      "loadedCount": "נטענו {{loaded}} מתוך {{total}}",
+      "empty": "לא נמצאו תוצאות התואמות את החיפוש.",
+      "loading": "טוען חומרים...",
+      "columns": {
+        "materialNumber": "מספר חומר",
+        "description": "תיאור",
+        "materialType": "סוג חומר",
+        "baseUnit": "יח' מידה",
+        "createdOn": "תאריך יצירה"
+      }
+    },
+    "details": {
+      "title": "פרטי חומר",
+      "selectItem": "בחר פריט מהרשימה להצגת פרטים",
+      "basicData": "נתונים בסיסיים",
+      "adminData": "נתוני מנהלה",
+      "longDescription": "תיאור ארוך",
+      "industrySector": "מגזר תעשייתי",
+      "status": "סטטוס",
+      "active": "פעיל",
+      "deleted": "מסומן למחיקה",
+      "createdBy": "נוצר על ידי",
+      "changedBy": "שונה לאחרונה על ידי",
+      "changedOn": "תאריך שינוי"
+    },
+    "enums": {
+      "materialType": {
+        "ROH": "חומר גלם (ROH)",
+        "HALB": "חומר חצי מוגמר (HALB)",
+        "FERT": "תוצר מוגמר (FERT)",
+        "HAWA": "סחורת מסחר (HAWA)"
+      },
+      "industrySector": {
+        "M": "מכני (M)",
+        "C": "כימי (C)",
+        "P": "פרמצבטי (P)",
+        "E": "אלקטרוניקה (E)"
+      }
+    },
+    "settings": {
+      "title": "הגדרות תצוגה",
+      "searchFields": "שדות לחיפוש",
+      "outputColumns": "עמודות לתוצאה",
+      "resetDefaults": "שחזר לברירת מחדל"
+    },
+    "compare": {
+      "title": "השוואת חומרים",
+      "button": "השוואה",
+      "tooMany": "ניתן להשוות עד 4 חומרים בו-זמנית",
+      "close": "סגור",
+      "diffHighlight": "שדה שונה בין החומרים",
+      "field": "שדה"
+    }
+  }
+}
