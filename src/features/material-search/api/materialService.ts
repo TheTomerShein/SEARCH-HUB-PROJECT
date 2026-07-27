@@ -6,11 +6,16 @@ import {
   SearchFieldDefinition, 
   OutputFieldDefinition,
   FieldsConfig,
-  CompareRequest
+  CompareRequest,
+  normalizeFieldsConfig,
 } from '../types/material';
 import { generateMockMaterials } from '../mocks/materialMockGenerator';
 import { logger } from '../../../utils/logger';
 import { apiClient, ApiError } from './apiClient';
+import { buildSearchRequest } from './buildSearchRequest';
+import { matchesMaterialFilters } from './matchMaterialFilters';
+import { normalizeSearchResult } from './normalizeSearchResult';
+import { mapMaterialToDetail } from './mapMaterialToDetail';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Service interface
@@ -32,36 +37,34 @@ export interface MaterialService {
 
   /**
    * Fetch a single material by its material number.
-   * Returns a full MaterialDetail (including LONG_TEXT, ERNAM, AENAM, etc.)
    * Corresponds to: GET /api/materials/:id
+   * Response: MaterialDetail (snake_case wire shape).
    */
   getById(materialNumber: string): Promise<MaterialDetail | null>;
-
-  /**
-   * @deprecated Use getFieldsConfig() instead — kept for internal mock compatibility.
-   */
-  getSearchFields(): Promise<SearchFieldDefinition[]>;
 
   /**
    * Fetch specific fields for multiple materials for comparison.
    * Corresponds to: POST /api/materials/compare
    */
-  compare(request: CompareRequest): Promise<Partial<MaterialDetail>[]>;
+  compare(request: CompareRequest): Promise<Partial<Material>[]>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Default field lists (shared between mock service and as fallback reference)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const MANDT = '100';
+
 const DEFAULT_INPUT_FIELDS: SearchFieldDefinition[] = [
-  { table_name: 'MARA', field_name: 'MATNR', hebrew_desc: 'materialSearch.filters.materialNumber', field_type: 'CHAR', field_length: 40 },
-  { table_name: 'MAKT', field_name: 'MAKTX', hebrew_desc: 'materialSearch.filters.searchPlaceholder', field_type: 'CHAR', field_length: 40 },
-  { 
-    table_name: 'MARA',
-    field_name: 'MTART', 
-    hebrew_desc: 'materialSearch.filters.materialType', 
-    field_type: 'MULTI_SELECT',
-    field_length: 4,
+  { tableName: 'MARA', fieldName: 'MATNR', hebrewDesc: 'materialSearch.filters.materialNumber', fieldType: 'CHAR', fieldLength: 40, mandt: MANDT },
+  { tableName: 'MAKT', fieldName: 'MAKTX', hebrewDesc: 'materialSearch.filters.searchPlaceholder', fieldType: 'CHAR', fieldLength: 40, mandt: MANDT },
+  {
+    tableName: 'MARA',
+    fieldName: 'MTART',
+    hebrewDesc: 'materialSearch.filters.materialType',
+    fieldType: 'MULTI_SELECT',
+    fieldLength: 4,
+    mandt: MANDT,
     options: [
       { label: 'materialSearch.enums.materialType.ROH', value: 'ROH' },
       { label: 'materialSearch.enums.materialType.HALB', value: 'HALB' },
@@ -69,12 +72,13 @@ const DEFAULT_INPUT_FIELDS: SearchFieldDefinition[] = [
       { label: 'materialSearch.enums.materialType.HAWA', value: 'HAWA' }
     ]
   },
-  { 
-    table_name: 'MARA',
-    field_name: 'MBRSH', 
-    hebrew_desc: 'materialSearch.details.industrySector', 
-    field_type: 'MULTI_SELECT',
-    field_length: 1,
+  {
+    tableName: 'MARA',
+    fieldName: 'MBRSH',
+    hebrewDesc: 'materialSearch.details.industrySector',
+    fieldType: 'MULTI_SELECT',
+    fieldLength: 1,
+    mandt: MANDT,
     options: [
       { label: 'materialSearch.enums.industrySector.M', value: 'M' },
       { label: 'materialSearch.enums.industrySector.C', value: 'C' },
@@ -83,11 +87,12 @@ const DEFAULT_INPUT_FIELDS: SearchFieldDefinition[] = [
     ]
   },
   {
-    table_name: 'MARA',
-    field_name: 'MEINS',
-    hebrew_desc: 'materialSearch.filters.baseUnit',
-    field_type: 'MULTI_SELECT',
-    field_length: 3,
+    tableName: 'MARA',
+    fieldName: 'MEINS',
+    hebrewDesc: 'materialSearch.filters.baseUnit',
+    fieldType: 'MULTI_SELECT',
+    fieldLength: 3,
+    mandt: MANDT,
     options: [
       { label: 'PC', value: 'PC' },
       { label: 'KG', value: 'KG' },
@@ -97,15 +102,17 @@ const DEFAULT_INPUT_FIELDS: SearchFieldDefinition[] = [
       { label: 'M3', value: 'M3' }
     ]
   },
-  { table_name: 'MARA', field_name: 'ERSDA_START', hebrew_desc: 'materialSearch.filters.startDate', field_type: 'DATS', field_length: 8 },
-  { table_name: 'MARA', field_name: 'ERSDA_END', hebrew_desc: 'materialSearch.filters.endDate', field_type: 'DATS', field_length: 8 },
-  { table_name: 'MARA', field_name: 'LVORM', hebrew_desc: 'materialSearch.filters.onlyActive', field_type: 'BOOLEAN', field_length: 1 },
+  { tableName: 'MARA', fieldName: 'MATKL', hebrewDesc: 'materialSearch.results.columns.materialGroup', fieldType: 'CHAR', fieldLength: 9, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'ERSDA_START', hebrewDesc: 'materialSearch.filters.startDate', fieldType: 'DATS', fieldLength: 8, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'ERSDA_END', hebrewDesc: 'materialSearch.filters.endDate', fieldType: 'DATS', fieldLength: 8, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'LVORM', hebrewDesc: 'materialSearch.filters.onlyActive', fieldType: 'BOOLEAN', fieldLength: 1, mandt: MANDT },
   {
-    table_name: 'MARC',
-    field_name: 'WERKS',
-    hebrew_desc: 'materialSearch.filters.plants',
-    field_type: 'WERKS_SELECTOR',
-    field_length: 4,
+    tableName: 'MARC',
+    fieldName: 'WERKS',
+    hebrewDesc: 'materialSearch.filters.plants',
+    fieldType: 'WERKS_SELECTOR',
+    fieldLength: 4,
+    mandt: MANDT,
     options: [
       { label: '1000 - מפעל ראשי', value: '1000' },
       { label: '2000 - מפעל צפון', value: '2000' },
@@ -116,21 +123,35 @@ const DEFAULT_INPUT_FIELDS: SearchFieldDefinition[] = [
   }
 ];
 
+/** Wide mock column set — exercises horizontal scroll + pinned MATNR. */
 const DEFAULT_OUTPUT_FIELDS: OutputFieldDefinition[] = [
-  { table_name: 'MARA', field_name: 'MATNR', hebrew_desc: 'materialSearch.results.columns.materialNumber', width: 120, field_type: 'CHAR', field_length: 40 },
-  { table_name: 'MAKT', field_name: 'MAKTX', hebrew_desc: 'materialSearch.results.columns.description', width: 250, field_type: 'CHAR', field_length: 40 },
-  { table_name: 'MARA', field_name: 'MTART', hebrew_desc: 'materialSearch.results.columns.materialType', width: 150, field_type: 'CHAR', field_length: 4 },
-  { table_name: 'MARA', field_name: 'MEINS', hebrew_desc: 'materialSearch.results.columns.baseUnit', width: 80, field_type: 'CHAR', field_length: 3 },
-  { table_name: 'MARA', field_name: 'LVORM', hebrew_desc: 'materialSearch.details.status', width: 100, field_type: 'BOOLEAN', field_length: 1 },
-  { table_name: 'MARA', field_name: 'ERSDA', hebrew_desc: 'materialSearch.results.columns.createdOn', width: 100, field_type: 'DATS', field_length: 8 },
-  { table_name: 'MARA', field_name: 'LAEDA', hebrew_desc: 'materialSearch.details.changedOn', width: 100, field_type: 'DATS', field_length: 8 }
+  { tableName: 'MARA', fieldName: 'MATNR', hebrewDesc: 'materialSearch.results.columns.materialNumber', fieldType: 'CHAR', fieldLength: 40, mandt: MANDT },
+  { tableName: 'MAKT', fieldName: 'MAKTX', hebrewDesc: 'materialSearch.results.columns.description', fieldType: 'CHAR', fieldLength: 40, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'MTART', hebrewDesc: 'materialSearch.results.columns.materialType', fieldType: 'CHAR', fieldLength: 4, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'MBRSH', hebrewDesc: 'materialSearch.details.industrySector', fieldType: 'CHAR', fieldLength: 1, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'MEINS', hebrewDesc: 'materialSearch.results.columns.baseUnit', fieldType: 'CHAR', fieldLength: 3, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'MATKL', hebrewDesc: 'materialSearch.results.columns.materialGroup', fieldType: 'CHAR', fieldLength: 9, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'SPART', hebrewDesc: 'materialSearch.results.columns.division', fieldType: 'CHAR', fieldLength: 2, mandt: MANDT },
+  { tableName: 'MARC', fieldName: 'WERKS', hebrewDesc: 'materialSearch.results.columns.plants', fieldType: 'CHAR', fieldLength: 4, mandt: MANDT },
+  { tableName: 'MARC', fieldName: 'WERKS_DISP', hebrewDesc: 'materialSearch.results.columns.plants', fieldType: 'CHAR', fieldLength: 40, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'BSTME', hebrewDesc: 'materialSearch.results.columns.orderUnit', fieldType: 'CHAR', fieldLength: 3, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'BRGEW', hebrewDesc: 'materialSearch.results.columns.grossWeight', fieldType: 'CHAR', fieldLength: 13, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'NTGEW', hebrewDesc: 'materialSearch.results.columns.netWeight', fieldType: 'CHAR', fieldLength: 13, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'GEWEI', hebrewDesc: 'materialSearch.results.columns.weightUnit', fieldType: 'CHAR', fieldLength: 3, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'VOLUM', hebrewDesc: 'materialSearch.results.columns.volume', fieldType: 'CHAR', fieldLength: 13, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'VOLEH', hebrewDesc: 'materialSearch.results.columns.volumeUnit', fieldType: 'CHAR', fieldLength: 3, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'LVORM', hebrewDesc: 'materialSearch.details.status', fieldType: 'BOOLEAN', fieldLength: 1, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'ERSDA', hebrewDesc: 'materialSearch.results.columns.createdOn', fieldType: 'DATS', fieldLength: 8, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'ERNAM', hebrewDesc: 'materialSearch.details.createdBy', fieldType: 'CHAR', fieldLength: 12, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'LAEDA', hebrewDesc: 'materialSearch.details.changedOn', fieldType: 'DATS', fieldLength: 8, mandt: MANDT },
+  { tableName: 'MARA', fieldName: 'AENAM', hebrewDesc: 'materialSearch.details.changedBy', fieldType: 'CHAR', fieldLength: 12, mandt: MANDT },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mock service (in-browser, no network)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class MockMaterialService implements MaterialService {
+class MockMaterialService implements MaterialService {
   private materials: Material[];
   private delayMs: number;
 
@@ -155,78 +176,28 @@ export class MockMaterialService implements MaterialService {
   async search(criteria: SearchCriteria): Promise<SearchResult> {
     try {
       await this.simulateDelay();
-      logger.info('Performing material search with criteria:', criteria);
+      // Same criteria → filters path as HTTP (buildSearchRequest)
+      const request = buildSearchRequest(criteria, DEFAULT_INPUT_FIELDS);
+      logger.info('Performing material search with request:', request);
 
-      // ── 1. Filter ────────────────────────────────────────────────────────
-      const filtered = this.materials.filter((m) => {
-        // Exclude deleted items by default
-        if (!criteria.LVORM && m.LVORM) return false;
-
-        if (criteria.MATNR) {
-          const searchMatnr = criteria.MATNR.trim().toLowerCase();
-          const matnr = m.MATNR.toLowerCase();
-          if (searchMatnr.endsWith('*')) {
-            if (!matnr.startsWith(searchMatnr.slice(0, -1))) return false;
-          } else if (searchMatnr.startsWith('*')) {
-            if (!matnr.endsWith(searchMatnr.slice(1))) return false;
-          } else {
-            if (!matnr.includes(searchMatnr)) return false;
-          }
-        }
-
-        if (criteria.MAKTX) {
-          const searchDesc = criteria.MAKTX.trim().toLowerCase();
-          if (!m.MAKTX.toLowerCase().includes(searchDesc) && !m.LONG_TEXT.toLowerCase().includes(searchDesc)) return false;
-        }
-
-        if (criteria.MTART && criteria.MTART.length > 0 && !criteria.MTART.includes(m.MTART)) return false;
-        if (criteria.MBRSH && criteria.MBRSH.length > 0 && !criteria.MBRSH.includes(m.MBRSH)) return false;
-        if (criteria.MEINS && criteria.MEINS.length > 0 && !criteria.MEINS.includes(m.MEINS)) return false;
-        if (criteria.ERSDA_START || criteria.ERSDA_END) {
-          const mDateClean = m.ERSDA.replace(/-/g, ''); // ponytail: normalize YYYY-MM-DD to YYYYMMDD for comparison
-          if (criteria.ERSDA_START && mDateClean < criteria.ERSDA_START) return false;
-          if (criteria.ERSDA_END && mDateClean > criteria.ERSDA_END) return false;
-        }
-        
-        // Plant filtering with AND/OR logic
-        if (criteria.WERKS && criteria.WERKS.length > 0) {
-          const logic = criteria.WERKS_LOGIC || 'OR';
-          const materialPlants = m.WERKS || [];
-          if (logic === 'OR') {
-            // Must have at least one of the selected plants
-            const hasAny = criteria.WERKS.some(p => materialPlants.includes(p));
-            if (!hasAny) return false;
-          } else {
-            // Must have ALL of the selected plants
-            const hasAll = criteria.WERKS.every(p => materialPlants.includes(p));
-            if (!hasAll) return false;
-          }
-        }
-
-        return true;
-      });
+      const filtered = this.materials.filter((m) =>
+        matchesMaterialFilters(m, request.filters),
+      );
 
       const totalCount = filtered.length;
       logger.info(`Found ${totalCount} materials (before paging)`);
 
-      // ── 2. Page (OData-style $skip / $top) ───────────────────────────────
-      const skip = criteria.$skip ?? 0;
-      const top  = criteria.$top;          // undefined = return all
-
-      const page = top != null
-        ? filtered.slice(skip, skip + top)
-        : filtered.slice(skip);
-
+      const skip = request.skip;
+      const top = request.top;
+      const page = filtered.slice(skip, skip + top);
       const hasMore = skip + page.length < totalCount;
 
-      logger.info(`Returning ${page.length} materials (skip=${skip}, top=${top ?? 'all'}, hasMore=${hasMore})`);
+      logger.info(`Returning ${page.length} materials (skip=${skip}, top=${top}, hasMore=${hasMore})`);
 
       return {
         materials: page,
         totalCount,
         hasMore,
-        // Populated for mock backwards-compatibility; real API does not include this.
-        outputFields: DEFAULT_OUTPUT_FIELDS,
       };
     } catch (error) {
       logger.error('Failed to search materials', error);
@@ -240,45 +211,29 @@ export class MockMaterialService implements MaterialService {
       logger.info(`Fetching material details for ${materialNumber}`);
       const material = this.materials.find((m) => m.MATNR === materialNumber);
       if (!material) return null;
-
-      // The mock Material already contains all MaterialDetail fields
-      // (LONG_TEXT, ERNAM, AENAM are generated by materialMockGenerator).
-      // We cast here to satisfy the richer return type.
-      const detail: MaterialDetail = {
-        ...material,
-        LONG_TEXT: material.LONG_TEXT,
-        ERNAM: material.ERNAM,
-        AENAM: material.AENAM,
-      };
-      return detail;
+      return mapMaterialToDetail(material);
     } catch (error) {
       logger.error(`Failed to fetch material ${materialNumber}`, error);
       throw error;
     }
   }
 
-  async compare(request: CompareRequest): Promise<Partial<MaterialDetail>[]> {
+  async compare(request: CompareRequest): Promise<Partial<Material>[]> {
     await this.simulateDelay();
-    logger.info(`Comparing materials: ${request.materials.join(', ')} with fields: ${request.fields.map(f => f.field_name).join(', ')}`);
+    logger.info(`Comparing materials: ${request.materials.join(', ')} with fields: ${request.fields.map(f => f.fieldName).join(', ')}`);
     
     return request.materials.map(matnr => {
       const material = this.materials.find(m => m.MATNR === matnr);
       if (!material) return { MATNR: matnr };
       
-      const result: Partial<MaterialDetail> = { MATNR: matnr };
+      const result: Partial<Material> = { MATNR: matnr };
       for (const field of request.fields) {
-        if (field.field_name in material) {
-          (result as any)[field.field_name] = (material as any)[field.field_name];
+        if (field.fieldName in material) {
+          (result as any)[field.fieldName] = (material as any)[field.fieldName];
         }
       }
       return result;
     });
-  }
-
-  /** @deprecated Use getFieldsConfig() */
-  async getSearchFields(): Promise<SearchFieldDefinition[]> {
-    const config = await this.getFieldsConfig();
-    return config.inputFields;
   }
 }
 
@@ -286,25 +241,33 @@ export class MockMaterialService implements MaterialService {
 // HTTP service (real backend)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class HttpMaterialService implements MaterialService {
+class HttpMaterialService implements MaterialService {
+  /** Cached fields config — used to map criteria → filter clauses with table_name. */
+  private fieldsConfigCache: FieldsConfig | null = null;
+
   /**
    * GET /api/materials/fields
    *
-   * Expected response:
-   * {
-   *   "inputFields": SearchFieldDefinition[],
-   *   "outputFields": OutputFieldDefinition[]
-   * }
+   * Field items: { fieldLength, fieldName, fieldType, hebrewDesc, mandt, tableName }
+   * Wrapped as: { inputFields, outputFields }
    */
   async getFieldsConfig(): Promise<FieldsConfig> {
+    if (this.fieldsConfigCache) return this.fieldsConfigCache;
     logger.info('[HttpMaterialService] GET /api/materials/fields');
-    return apiClient.get<FieldsConfig>('/api/materials/fields');
+    const raw = await apiClient.get<unknown>('/api/materials/fields');
+    this.fieldsConfigCache = normalizeFieldsConfig(raw);
+    return this.fieldsConfigCache;
   }
 
   /**
    * POST /api/materials/search
    *
-   * Request body: SearchCriteria
+   * Request body:
+   * {
+   *   skip: number,
+   *   top: number,
+   *   filters: [{ table_name, field_name, operator, values: string[] }]
+   * }
    * Expected response:
    * {
    *   "materials": Material[],
@@ -312,14 +275,18 @@ export class HttpMaterialService implements MaterialService {
    * }
    */
   async search(criteria: SearchCriteria): Promise<SearchResult> {
-    logger.info('[HttpMaterialService] POST /api/materials/search', criteria);
-    return apiClient.post<SearchResult>('/api/materials/search', criteria);
+    const { inputFields, outputFields } = await this.getFieldsConfig();
+    const body = buildSearchRequest(criteria, inputFields);
+    logger.info('[HttpMaterialService] POST /api/materials/search', body);
+    const raw = await apiClient.post<SearchResult>('/api/materials/search', body);
+    // Wire maraMatnr → domain MATNR at the service seam (UI stays on bare keys)
+    return normalizeSearchResult(raw, outputFields);
   }
 
   /**
    * GET /api/materials/:id
    *
-   * Expected response: MaterialDetail object, or HTTP 404 (returns null).
+   * Expected response: MaterialDetail (snake_case), or HTTP 404 (returns null).
    */
   async getById(materialNumber: string): Promise<MaterialDetail | null> {
     logger.info(`[HttpMaterialService] GET /api/materials/${materialNumber}`);
@@ -334,15 +301,9 @@ export class HttpMaterialService implements MaterialService {
     }
   }
 
-  async compare(request: CompareRequest): Promise<Partial<MaterialDetail>[]> {
+  async compare(request: CompareRequest): Promise<Partial<Material>[]> {
     logger.info('[HttpMaterialService] POST /api/materials/compare', request);
-    return apiClient.post<Partial<MaterialDetail>[]>('/api/materials/compare', request);
-  }
-
-  /** @deprecated Use getFieldsConfig() */
-  async getSearchFields(): Promise<SearchFieldDefinition[]> {
-    const config = await this.getFieldsConfig();
-    return config.inputFields;
+    return apiClient.post<Partial<Material>[]>('/api/materials/compare', request);
   }
 }
 

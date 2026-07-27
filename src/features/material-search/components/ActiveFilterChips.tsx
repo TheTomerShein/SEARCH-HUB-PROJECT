@@ -4,6 +4,7 @@ import { searchCriteriaState } from '../state/search.state';
 import { useSearchFieldsQuery } from '../hooks/useMaterialSearch';
 import { useTranslation } from 'react-i18next';
 import { SearchCriteria } from '../types/material';
+import { formatDateChip } from '../../../utils/formatDate';
 
 export function ActiveFilterChips() {
   const { t } = useTranslation();
@@ -32,25 +33,17 @@ export function ActiveFilterChips() {
   if (criteria.ERSDA_START || criteria.ERSDA_END) {
     const startRaw = criteria.ERSDA_START || '';
     const endRaw = criteria.ERSDA_END || '';
-    
-    // ponytail: Format date from YYYYMMDD to human-readable DD/MM/YYYY for RTL Hebrew UI
-    const formatDateForChip = (dateStr: string) => {
-      if (dateStr.length === 8) {
-        return `${dateStr.slice(6, 8)}/${dateStr.slice(4, 6)}/${dateStr.slice(0, 4)}`;
-      }
-      return dateStr;
-    };
 
-    const start = formatDateForChip(startRaw);
-    const end = formatDateForChip(endRaw);
+    const start = formatDateChip(startRaw);
+    const end = formatDateChip(endRaw);
     
     let labelText = '';
     if (start && end) labelText = start === end ? start : `${start} - ${end}`;
     else if (start) labelText = `מ-${start}`;
     else if (end) labelText = `עד ${end}`;
 
-    const fieldDef = searchFields.find(f => f.field_name === 'ERSDA_START' || f.field_name === 'ERSDA');
-    const fieldLabel = fieldDef ? t(fieldDef.hebrew_desc) : t('materialSearch.results.columns.createdOn', 'תאריך יצירה');
+    const fieldDef = searchFields.find(f => f.fieldName === 'ERSDA_START' || f.fieldName === 'ERSDA');
+    const fieldLabel = fieldDef ? t(fieldDef.hebrewDesc) : t('materialSearch.results.columns.createdOn', 'תאריך יצירה');
     
     addChip('ERSDA_RANGE', `${fieldLabel}: ${labelText}`, () => {
       setCriteria(prev => {
@@ -68,8 +61,8 @@ export function ActiveFilterChips() {
     if (value === undefined || value === null || value === '') return;
     if (key === 'LVORM' && value === false) return; // Default state, no chip
 
-    const fieldDef = searchFields.find(f => f.field_name === key);
-    const fieldLabel = fieldDef ? t(fieldDef.hebrew_desc) : key;
+    const fieldDef = searchFields.find(f => f.fieldName === key);
+    const fieldLabel = fieldDef ? t(fieldDef.hebrewDesc) : key;
 
     if (Array.isArray(value)) {
       if (value.length === 0) return;

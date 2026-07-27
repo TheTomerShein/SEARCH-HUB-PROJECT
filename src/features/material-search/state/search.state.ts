@@ -6,21 +6,42 @@ export interface SavedSearch {
   id: string;
   name: string;
   criteria: SearchCriteria;
+  /**
+   * Criteria-sidebar field keys (`fieldKey()` / activeSearchFieldsState) visible when this was saved.
+   * - string[] = only those fields
+   * - null = show all (same as activeSearchFields null)
+   * - omitted (old saves) = do not change field visibility on apply
+   */
+  searchFieldKeys?: string[] | null;
 }
 
 // --- Effects ---
 
+/**
+ * Multi-value filters are written as comma-joined URL params (see onSet).
+ * On restore, split them back into string[] so MATNR=X,Y → ['X','Y'] not 'X,Y'.
+ * Booleans / *_LOGIC stay scalar; single values stay string (asStringList accepts both).
+ */
+function parseCriteriaParam(key: string, v: string): string | boolean | string[] {
+  if (key.endsWith('_LOGIC')) return v;
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  if (v.includes(',')) {
+    return v.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return v;
+}
+
 const urlSyncEffect: AtomEffect<SearchCriteria> = ({ setSelf, onSet }) => {
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
-    const criteria: any = {};
+    const criteria: Record<string, string | boolean | string[]> = {};
     params.forEach((v, k) => {
-      if (!['f','c'].includes(k)) {
-        if (['MTART', 'MBRSH', 'MEINS'].includes(k)) criteria[k] = v ? v.split(',') : [];
-        else criteria[k] = v === 'true' ? true : v === 'false' ? false : v;
+      if (!['f', 'c'].includes(k)) {
+        criteria[k] = parseCriteriaParam(k, v);
       }
     });
-    if (Object.keys(criteria).length > 0) setSelf(criteria);
+    if (Object.keys(criteria).length > 0) setSelf(criteria as SearchCriteria);
 
     onSet((newValue, _, isReset) => {
       const newUrl = new URL(window.location.href);
@@ -79,6 +100,16 @@ export const savedSearchesState = atom<SavedSearch[]>({
 });
 
 /**
+ * Which user saved search is pre-filled on dashboard open (fill only).
+ * Empty string = none. localStorage: materialDefaultSavedSearchId
+ */
+export const defaultSavedSearchIdState = atom<string>({
+  key: 'materialDefaultSavedSearchId',
+  default: '',
+  effects: [localStorageEffect<string>('materialDefaultSavedSearchId')],
+});
+
+/**
  * Tracks whether the user has explicitly submitted at least one search.
  *
  * When false (initial state) the search query is disabled — no network call
@@ -132,13 +163,31 @@ export const activeCompareFieldsState = atom<string[] | null>({
 });
 
 /**
- * Material numbers (MATNRs) that the user has ticked for bulk export.
- * Separate from selectedMaterialNumberState (which drives the detail panel).
+ * Result-row selection ids (getResultRowId: MATNR, or MATNR+plant).
+ * Not the same as selectedMaterialNumberState (detail panel).
  * Reset to [] when filters are cleared.
  */
 export const checkedRowsState = atom<string[]>({
   key: 'checkedRows',
   default: [],
+});
+
+/** Lightweight list metrics for TopBar (avoids second infinite-query observer). */
+export interface SearchListMeta {
+  loadedCount: number;
+  totalCount: number;
+  isFetchingNextPage: boolean;
+  hasData: boolean;
+}
+
+export const searchListMetaState = atom<SearchListMeta>({
+  key: 'searchListMeta',
+  default: {
+    loadedCount: 0,
+    totalCount: 0,
+    isFetchingNextPage: false,
+    hasData: false,
+  },
 });
 
 /**
@@ -156,13 +205,5 @@ export const compareModeOpenState = atom<boolean>({
  */
 export const filterDrawerOpenState = atom<boolean>({
   key: 'filterDrawerOpen',
-  default: false,
-});
-
-/**
- * Controls whether the detail panel drawer is open on screens < lg.
- */
-export const detailDrawerOpenState = atom<boolean>({
-  key: 'detailDrawerOpen',
   default: false,
 });

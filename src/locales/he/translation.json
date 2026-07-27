@@ -4,6 +4,9 @@
   },
   "materialSearch": {
     "search": "חיפוש",
+    "hero": {
+      "subtitle": "הגדר קריטריונים ולחץ חיפוש לצפייה בתוצאות"
+    },
     "filters": {
       "title": "סינון מתקדם",
       "materialNumber": "מספר חומר (MATNR)",
@@ -14,11 +17,27 @@
       "createdRange": "טווח תאריכי יצירה",
       "startDate": "מתאריך",
       "endDate": "עד תאריך",
-      "plants": "מפעלים (WERKS)",
-      "matchAny": "לפחות אחד (OR)",
-      "matchAll": "את כולם (AND)",
+      "plants": "זרוע משתמשת",
+      "matchAny": "לפחות אחד",
+      "matchAll": "את כולם",
       "clearFilters": "נקה סינונים",
-      "searchPlaceholder": "חיפוש חופשי..."
+      "searchPlaceholder": "חיפוש חופשי...",
+      "chipEnterHint": "Enter להוספה",
+      "multiManagerCount": "{{shown}} / {{total}} ערכים",
+      "multiManagerFiltered": "מסונן",
+      "multiManagerSearch": "חיפוש בערכים…",
+      "multiManagerEmpty": "אין ערכים",
+      "multiManagerNoMatch": "לא נמצאו תוצאות",
+      "multiManagerClearAll": "נקה הכל",
+      "multiManagerClearFiltered": "מחק מסוננים ({{count}})",
+      "multiManagerDone": "סיום",
+      "dirtyDraft": "שינויים לא הוחלו"
+    },
+    "selection": {
+      "barLabel": "פעולות על בחירה",
+      "count": "{{count}} נבחרו",
+      "uniqueMaterials": "{{count}} חומרים ייחודיים",
+      "clear": "נקה בחירה"
     },
     "savedSearches": {
       "title": "חיפושים שמורים",
@@ -27,25 +46,50 @@
       "saveTitle": "שמור חיפוש נוכחי",
       "nameLabel": "שם החיפוש",
       "cancel": "ביטול",
-      "save": "שמור"
+      "save": "שמור",
+      "setDefault": "הגדר כברירת מחדל בפתיחה",
+      "isDefault": "ברירת מחדל לפתיחת המסך"
     },
     "actions": {
       "exportExcel": "ייצוא לאקסל",
       "copyMaterials": "העתק חומרים",
       "copyMaterialsSelected": "העתק חומרים ({{count}})",
-      "materialsCopied": "החומרים הועתקו ללוח בהצלחה!"
+      "materialsCopied": "החומרים הועתקו ללוח בהצלחה!",
+      "matnrCopied": "הועתק: {{matnr}}",
+      "copyMatnr": "לחץ להעתקת מספר חומר",
+      "linkCopied": "הקישור הועתק בהצלחה!",
+      "copyFailed": "ההעתקה נכשלה",
+      "exportDone": "הייצוא הושלם בהצלחה!",
+      "exportFailed": "הייצוא נכשל"
+    },
+    "transfer": {
+      "button": "דוח שגויים",
+      "opened": "דוח שגויים נפתח · {{count}} חומרים נשלחו",
+      "openFailed": "פתיחת דוח שגויים נכשלה"
     },
     "results": {
       "count": "נמצאו {{count}} רשומות",
       "loadedCount": "נטענו {{loaded}} מתוך {{total}}",
-      "empty": "לא נמצאו תוצאות התואמות את החיפוש.",
+      "empty": "לא נמצאו תוצאות התואמות את החיפוש",
+      "emptyHint": "נסה להרחיב את קריטריוני החיפוש, להסיר סינון, או לבדוק את מספר החומר.",
       "loading": "טוען חומרים...",
+      "error": "שגיאה בטעינת תוצאות החיפוש",
+      "retry": "נסה שוב",
       "columns": {
         "materialNumber": "מספר חומר",
         "description": "תיאור",
         "materialType": "סוג חומר",
         "baseUnit": "יח' מידה",
-        "createdOn": "תאריך יצירה"
+        "createdOn": "תאריך יצירה",
+        "materialGroup": "קבוצת חומרים",
+        "division": "מגזר",
+        "plants": "מפעלים",
+        "orderUnit": "יח' הזמנה",
+        "grossWeight": "משקל ברוטו",
+        "netWeight": "משקל נטו",
+        "weightUnit": "יח' משקל",
+        "volume": "נפח",
+        "volumeUnit": "יח' נפח"
       }
     },
     "details": {
@@ -56,6 +100,13 @@
       "longDescription": "תיאור ארוך",
       "industrySector": "מגזר תעשייתי",
       "status": "סטטוס",
+      "globalStatus": "סטטוס גלובלי",
+      "zzMaterialType": "סוג חומר טור 06",
+      "managingBranch": "זרוע מנהלת",
+      "usingBranches": "זרועות משתמשות",
+      "noBranches": "אין זרועות",
+      "changeRequest": "בקשת שינוי",
+      "noChangeRequest": "אין בקשת שינוי פתוחה",
       "active": "פעיל",
       "deleted": "מסומן למחיקה",
       "createdBy": "נוצר על ידי",
@@ -80,8 +131,13 @@
       "title": "הגדרות תצוגה",
       "searchFields": "שדות לחיפוש",
       "outputColumns": "עמודות לתוצאה",
-      "resetDefaults": "שחזר לברירת מחדל"
+      "compareFields": "שדות להשוואה",
+      "resetDefaults": "שחזר לברירת מחדל",
+      "clearSelection": "בטל בחירת הכל",
+      "cancel": "ביטול",
+      "apply": "שמור"
     },
+
     "compare": {
       "title": "השוואת חומרים",
       "button": "השוואה",

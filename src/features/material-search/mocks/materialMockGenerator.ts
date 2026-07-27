@@ -50,6 +50,10 @@ const INDUSTRY_SECTORS: IndustrySector[] = ['M', 'C', 'P', 'E'];
 const MATERIAL_TYPES: MaterialType[] = ['ROH', 'HALB', 'FERT', 'HAWA'];
 const BASE_UNITS: BaseUnitOfMeasure[] = ['PC', 'KG', 'L', 'M', 'M2', 'M3'];
 const PLANTS = ['1000', '2000', '3000', '4000', '5000'];
+const MAT_GROUPS = ['001', '002', '010', '100', '200', 'RAW01', 'FIN02', 'HALB3'];
+const DIVISIONS = ['00', '01', '10', '20'];
+const WEIGHT_UNITS = ['KG', 'G', 'TO'];
+const VOLUME_UNITS = ['M3', 'L', 'CCM'];
 
 export function generateMockMaterials(count: number = 4000): Material[] {
   const lcg = new LCG(123456); // Use a fixed seed for deterministic outputs
@@ -117,6 +121,10 @@ export function generateMockMaterials(count: number = 4000): Material[] {
       availablePlants.splice(idx, 1);
     }
 
+    const brgew = (lcg.next() * 500 + 0.1).toFixed(3);
+    const ntgew = (Number(brgew) * (0.7 + lcg.next() * 0.25)).toFixed(3);
+    const volum = (lcg.next() * 20).toFixed(3);
+
     materials.push({
       MATNR: matnr,
       MAKTX: maktx,
@@ -129,7 +137,17 @@ export function generateMockMaterials(count: number = 4000): Material[] {
       ERNAM: ernam,
       LAEDA: laeda,
       AENAM: aenam,
-      WERKS: werks
+      WERKS: werks,
+      // Extra columns for wide-grid / pin-scroll testing
+      MATKL: lcg.pick(MAT_GROUPS),
+      SPART: lcg.pick(DIVISIONS),
+      BSTME: lcg.boolean(0.4) ? lcg.pick(BASE_UNITS) : meins,
+      BRGEW: brgew,
+      NTGEW: ntgew,
+      GEWEI: lcg.pick(WEIGHT_UNITS),
+      VOLUM: volum,
+      VOLEH: lcg.pick(VOLUME_UNITS),
+      WERKS_DISP: werks.join(', '),
     });
   }
 

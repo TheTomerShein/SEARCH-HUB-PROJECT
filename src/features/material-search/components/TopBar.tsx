@@ -1,314 +1,389 @@
-import { Box, Button, Typography, IconButton, Tooltip, Chip, Badge, Menu, MenuItem, Snackbar, Alert, CircularProgress } from '@mui/material';
+import {
+  Box,
+  Button,
+  Chip,
+  Typography,
+  IconButton,
+  Tooltip,
+  Menu,
+  MenuItem,
+  Snackbar,
+  Alert,
+  CircularProgress,
+} from '@mui/material';
 import { useTranslation } from 'react-i18next';
-import { FileDownload, ClearAll, Settings as SettingsIcon, CheckBox as CheckBoxIcon, CompareArrows as CompareIcon, MoreVert, FilterList, Share, ContentCopy } from '@mui/icons-material';
-import { useRecoilState } from 'recoil';
-import { searchCriteriaState, searchSubmittedState, checkedRowsState, compareModeOpenState } from '../state/search.state';
-import { useMaterialSearchInfiniteQuery } from '../hooks/useMaterialSearch';
-import { fetchAllMaterials } from '../api/materialService';
-import { useState } from 'react';
-import { FieldSettingsDialog } from './FieldSettingsDialog';
-import { Material } from '../types/material';
+import {
+  Close as CloseIcon,
+  CompareArrows as CompareIcon,
+  FileDownload,
+  FilterAltOff,
+  Settings as SettingsIcon,
+  MoreVert,
+  FilterList,
+  Share,
+  ContentCopy,
+  Flight as FlightIcon,
+} from '@mui/icons-material';
+import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil';
+import {
+  searchCriteriaState,
+  searchSubmittedState,
+  checkedRowsState,
+  searchListMetaState,
+  compareModeOpenState,
+} from '../state/search.state';
+import { lazy, Suspense, useMemo, useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLayoutMode } from '../hooks/useLayoutMode';
 import { useShareableLink } from '../hooks/useShareableLink';
+import { useBulkMaterialActions } from '../hooks/useBulkMaterialActions';
+import { matnrFromResultRowId } from '../types/material';
+import { openErrorsReportWithMaterials } from '../api/postMaterialsMessage';
 
+const FieldSettingsDialog = lazy(() =>
+  import('./FieldSettingsDialog').then((m) => ({ default: m.FieldSettingsDialog })),
+);
+
+/**
+ * App chrome: brand · loaded count · selection chip · export / copy / compare.
+ */
 export function TopBar() {
   const { t } = useTranslation();
-  const [criteria, setCriteria] = useRecoilState(searchCriteriaState);
+  const queryClient = useQueryClient();
+  const [, setCriteria] = useRecoilState(searchCriteriaState);
   const [searchSubmitted, setSearchSubmitted] = useRecoilState(searchSubmittedState);
   const [checkedRows, setCheckedRows] = useRecoilState(checkedRowsState);
-  const [, setCompareOpen] = useRecoilState(compareModeOpenState);
-  const { data, isFetchingNextPage } = useMaterialSearchInfiniteQuery(criteria, searchSubmitted);
+  const setCompareOpen = useSetRecoilState(compareModeOpenState);
+  const listMeta = useRecoilValue(searchListMetaState);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { isLgUp, isMdUp, setFilterDrawerOpen } = useLayoutMode();
   const { copyLink } = useShareableLink();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [toastOpen, setToastOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
-  const [isExporting, setIsExporting] = useState(false);
-  const [isCopying, setIsCopying] = useState(false);
+  const {
+    open: toastOpen,
+    message: toastMessage,
+    severity: toastSeverity,
+    showToast,
+    setOpen: setToastOpen,
+    hasSelection,
+    checkedCount,
+    isExporting,
+    isCopying,
+    isExportDisabled,
+    isCopyDisabled,
+    handleExport,
+    handleCopyMaterials,
+  } = useBulkMaterialActions();
 
-  const hasSelection = checkedRows.length > 0;
-  const canCompare = checkedRows.length >= 2 && checkedRows.length <= 4;
-  const tooManyForCompare = checkedRows.length > 4;
+  const uniqueMatnrs = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const id of checkedRows) {
+      const m = matnrFromResultRowId(id);
+      if (!m || seen.has(m)) continue;
+      seen.add(m);
+      out.push(m);
+    }
+    return out;
+  }, [checkedRows]);
+  const uniqueMatnrCount = uniqueMatnrs.length;
+  const canCompare = uniqueMatnrCount >= 2 && uniqueMatnrCount <= 4;
+  const canTransfer = searchSubmitted && uniqueMatnrCount > 0;
+
+  /** Open external "דוח שגויים" site and post selected MATNRs via window.postMessage. */
+  const openErrorsReport = useCallback(() => {
+    if (uniqueMatnrs.length === 0) return;
+    try {
+      const { materials } = openErrorsReportWithMaterials(uniqueMatnrs);
+      showToast(
+        t('materialSearch.transfer.opened', {
+          count: materials.length,
+          defaultValue: `דוח שגויים נפתח · ${materials.length} חומרים נשלחו`,
+        }),
+      );
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? err.message
+          : t('materialSearch.transfer.openFailed', 'פתיחת דוח שגויים נכשלה'),
+        'error',
+      );
+    }
+  }, [uniqueMatnrs, showToast, t]);
 
   const handleClearFilters = () => {
+    void queryClient.cancelQueries({ queryKey: ['materials', 'search', 'infinite'] });
     setCriteria({ LVORM: false });
     setSearchSubmitted(false);
-    setCheckedRows([]); // also clear selection on filter reset
-  };
-
-  const handleClearSelection = () => {
     setCheckedRows([]);
   };
 
+  const clearSelection = () => setCheckedRows([]);
+
   const handleCopyLink = async () => {
     const ok = await copyLink();
-    if (ok) {
-      setToastMessage(t('materialSearch.actions.linkCopied', 'הקישור הועתק בהצלחה!'));
-      setToastOpen(true);
-    }
+    showToast(
+      ok
+        ? t('materialSearch.actions.linkCopied', 'הקישור הועתק בהצלחה!')
+        : t('materialSearch.actions.copyFailed', 'ההעתקה נכשלה'),
+      ok ? 'success' : 'error',
+    );
   };
 
-  const handleCopyMaterials = async () => {
-    if (!data?.pages) return;
-    setIsCopying(true);
-
-    try {
-      let rowsToCopy: Material[];
-
-      if (hasSelection) {
-        // Copy only the checked rows, preserving their original order
-        const materialsList = data.pages.flatMap(p => p.materials);
-        const checkedSet = new Set(checkedRows);
-        rowsToCopy = materialsList.filter(m => checkedSet.has(m.MATNR));
-      } else {
-        // No selection → copy everything by fetching all pages
-        const { $skip: _s, $top: _t, ...baseCriteria } = criteria;
-        rowsToCopy = await fetchAllMaterials(baseCriteria);
-      }
-
-      if (rowsToCopy.length === 0) return;
-
-      const matnrList = rowsToCopy.map(m => m.MATNR).join('\n');
-      await navigator.clipboard.writeText(matnrList);
-
-      setToastMessage(t('materialSearch.actions.materialsCopied', 'החומרים הועתקו ללוח בהצלחה!'));
-      setToastOpen(true);
-    } catch (error) {
-      console.error('Failed to copy materials to clipboard', error);
-    } finally {
-      setIsCopying(false);
-    }
-  };
-
-  const handleExport = async () => {
-    if (!data?.pages) return;
-    setIsExporting(true);
-
-    try {
-      let rowsToExport: Material[];
-
-      if (hasSelection) {
-        // Export only the checked rows, preserving their original order
-        const materials = data.pages.flatMap(p => p.materials);
-        const checkedSet = new Set(checkedRows);
-        rowsToExport = materials.filter(m => checkedSet.has(m.MATNR));
-      } else {
-        // No selection → export everything by fetching all pages
-        const { $skip: _s, $top: _t, ...baseCriteria } = criteria;
-        rowsToExport = await fetchAllMaterials(baseCriteria);
-      }
-
-      if (rowsToExport.length === 0) return;
-
-      const xlsx = await import('xlsx');
-      const worksheet = xlsx.utils.json_to_sheet(rowsToExport);
-      const workbook = xlsx.utils.book_new();
-      xlsx.utils.book_append_sheet(workbook, worksheet, 'Materials');
-      const filename = hasSelection
-        ? `materials_selected_${checkedRows.length}.xlsx`
-        : 'materials_export.xlsx';
-      xlsx.writeFile(workbook, filename);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
-  const materials = data?.pages.flatMap(p => p.materials) ?? [];
-  const totalCount = data?.pages[0]?.totalCount ?? 0;
-  const loadedCount = materials.length;
-  const isExportDisabled = loadedCount === 0 || isExporting || (!hasSelection && isFetchingNextPage);
-  const exportLabel = hasSelection
-    ? `${t('materialSearch.actions.exportExcel')} (${checkedRows.length})`
-    : t('materialSearch.actions.exportExcel');
-  const isCopyDisabled = loadedCount === 0 || isCopying || (!hasSelection && isFetchingNextPage);
-  const copyLabel = hasSelection
-    ? t('materialSearch.actions.copyMaterialsSelected', { count: checkedRows.length, defaultValue: `העתק ${checkedRows.length} שורות ללוח` })
-    : t('materialSearch.actions.copyMaterials', 'העתק חומרים ללוח');
+  const { loadedCount, totalCount, hasData } = listMeta;
 
   return (
-    <Box sx={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      p: 2,
-      borderBottom: 1,
-      borderColor: 'divider',
-      bgcolor: 'background.paper',
-      gap: 2,
-      flexWrap: 'wrap',
-    }}>
-      <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold', flexShrink: 0 }}>
-        {t('app.title')}
-      </Typography>
-
-      {/* Centre: result count + selection badge */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        {searchSubmitted && data && (
-          <Typography variant="body2" color="text.secondary">
+    <Box
+      component="header"
+      className="mdg-topbar"
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        px: 2,
+        py: 1.25,
+        gap: 2,
+        flexWrap: 'wrap',
+        bgcolor: 'background.paper',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        boxShadow: '0 1px 0 rgba(15,23,42,0.04)',
+        zIndex: 10,
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 800,
+            flexShrink: 0,
+            color: 'primary.dark',
+            letterSpacing: '-0.02em',
+            fontSize: { xs: '1rem', sm: '1.15rem' },
+          }}
+        >
+          {t('app.title')}
+        </Typography>
+        {searchSubmitted && hasData && (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{
+              px: 1.25,
+              py: 0.35,
+              borderRadius: 1.5,
+              bgcolor: 'action.hover',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {t('materialSearch.results.loadedCount', { loaded: loadedCount, total: totalCount })}
           </Typography>
         )}
-
         {hasSelection && (
-          <Chip
-            icon={<CheckBoxIcon sx={{ fontSize: '1rem !important' }} />}
-            label={`${checkedRows.length} נבחרו`}
-            size="small"
-            color="primary"
-            variant="outlined"
-            onDelete={handleClearSelection}
-            sx={{ fontWeight: 600 }}
-          />
+          <Tooltip title={t('materialSearch.selection.clear', 'נקה בחירה')}>
+            <span>
+              <Chip
+                size="small"
+                color="primary"
+                label={t('materialSearch.selection.count', {
+                  count: checkedCount,
+                  defaultValue: `${checkedCount} נבחרו`,
+                })}
+                onClick={clearSelection}
+                onDelete={clearSelection}
+                deleteIcon={<CloseIcon fontSize="small" />}
+                sx={{ fontWeight: 700, cursor: 'pointer' }}
+              />
+            </span>
+          </Tooltip>
         )}
       </Box>
 
-      {/* Right: actions */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0, ml: 'auto' }}>
         {!isLgUp && searchSubmitted && (
           <Button
             variant="outlined"
+            size="small"
             startIcon={<FilterList />}
             onClick={() => setFilterDrawerOpen(true)}
-            size="small"
           >
-            סינון
+            {t('materialSearch.filters.title', 'סינון')}
           </Button>
         )}
 
         {isMdUp ? (
           <>
             <Tooltip title={t('materialSearch.actions.copyLink', 'העתק קישור')}>
-              <IconButton onClick={handleCopyLink} id="copy-link-btn">
-                <Share />
+              <IconButton onClick={() => void handleCopyLink()} id="copy-link-btn" size="small">
+                <Share fontSize="small" />
               </IconButton>
             </Tooltip>
 
             <Tooltip title={t('materialSearch.settings.title', 'הגדרות תצוגה')}>
-              <IconButton onClick={() => setSettingsOpen(true)} id="open-settings-btn">
-                <SettingsIcon />
+              <IconButton onClick={() => setSettingsOpen(true)} id="open-settings-btn" size="small">
+                <SettingsIcon fontSize="small" />
               </IconButton>
             </Tooltip>
 
-            {hasSelection && (
-              <Tooltip title={tooManyForCompare ? t('materialSearch.compare.tooMany') : t('materialSearch.compare.button')}>
+            <Tooltip title={t('materialSearch.filters.clearFilters')}>
+              <IconButton onClick={handleClearFilters} id="clear-filters-btn" size="small">
+                <FilterAltOff fontSize="small" />
+              </IconButton>
+            </Tooltip>
+
+            {searchSubmitted && (
+              <Tooltip title={t('materialSearch.actions.copyMaterials', 'העתק חומרים')}>
                 <span>
-                  <Button
-                    variant="outlined"
-                    color="secondary"
-                    startIcon={<CompareIcon />}
-                    onClick={() => setCompareOpen(true)}
-                    disabled={!canCompare}
-                    id="compare-btn"
-                    sx={{
-                      borderColor: canCompare ? 'secondary.main' : undefined,
-                      fontWeight: 600,
-                    }}
+                  <IconButton
+                    onClick={() => void handleCopyMaterials()}
+                    disabled={isCopyDisabled}
+                    id="copy-materials-btn"
+                    size="small"
                   >
-                    {t('materialSearch.compare.button')} ({checkedRows.length})
-                  </Button>
+                    {isCopying ? <CircularProgress size={18} /> : <ContentCopy fontSize="small" />}
+                  </IconButton>
                 </span>
               </Tooltip>
             )}
 
-            <Button
-              variant="outlined"
-              startIcon={<ClearAll />}
-              onClick={handleClearFilters}
-              id="clear-filters-btn"
-            >
-              {t('materialSearch.filters.clearFilters')}
-            </Button>
+            {searchSubmitted && canCompare && (
+              <Button
+                size="small"
+                variant="outlined"
+                color="secondary"
+                startIcon={<CompareIcon />}
+                onClick={() => setCompareOpen(true)}
+                sx={{ fontWeight: 600 }}
+              >
+                {t('materialSearch.compare.button')} ({uniqueMatnrCount})
+              </Button>
+            )}
 
             {searchSubmitted && (
               <>
-                <Tooltip title={hasSelection ? `העתק ${checkedRows.length} שורות נבחרות ללוח` : 'העתק כל התוצאות ללוח'}>
-                  <span>
-                    <Badge
-                      badgeContent={hasSelection ? checkedRows.length : 0}
-                      color="secondary"
-                      max={9999}
-                      sx={{ mr: 1.5 }}
-                    >
-                      <Button
-                        variant="outlined"
-                        startIcon={isCopying ? <CircularProgress size={20} color="inherit" /> : <ContentCopy />}
-                        onClick={handleCopyMaterials}
-                        disabled={isCopyDisabled}
-                        id="copy-materials-btn"
-                      >
-                        {copyLabel}
-                      </Button>
-                    </Badge>
-                  </span>
-                </Tooltip>
-
-                <Tooltip title={hasSelection ? `ייצוא ${checkedRows.length} שורות נבחרות` : 'ייצוא כל התוצאות'}>
-                  <span>
-                    <Badge
-                      badgeContent={hasSelection ? checkedRows.length : 0}
-                      color="primary"
-                      max={9999}
-                    >
-                      <Button
-                        variant="contained"
-                        startIcon={isExporting ? <CircularProgress size={20} color="inherit" /> : <FileDownload />}
-                        onClick={handleExport}
-                        disabled={isExportDisabled}
-                        id="export-excel-btn"
-                        color={hasSelection ? 'primary' : 'primary'}
-                      >
-                        {exportLabel}
-                      </Button>
-                    </Badge>
-                  </span>
-                </Tooltip>
+                {canTransfer && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<FlightIcon />}
+                    onClick={openErrorsReport}
+                    id="transfer-materials-btn"
+                    sx={{
+                      fontWeight: 700,
+                      // Amber = caution / issues report — not error-red, not primary indigo
+                      color: '#78350F',
+                      bgcolor: '#FDE68A',
+                      border: '1px solid #F59E0B',
+                      boxShadow: 'none',
+                      '&:hover': {
+                        bgcolor: '#FCD34D',
+                        borderColor: '#D97706',
+                        boxShadow: '0 1px 3px rgba(217, 119, 6, 0.25)',
+                      },
+                      '& .MuiButton-startIcon': { color: '#B45309' },
+                    }}
+                  >
+                    {t('materialSearch.transfer.button', 'דוח שגויים')} ({uniqueMatnrCount})
+                  </Button>
+                )}
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={isExporting ? <CircularProgress size={16} color="inherit" /> : <FileDownload />}
+                  onClick={() => void handleExport()}
+                  disabled={isExportDisabled}
+                  id="export-excel-btn"
+                  sx={{ fontWeight: 700, ml: 0.5 }}
+                >
+                  {t('materialSearch.actions.exportExcel')}
+                </Button>
               </>
             )}
           </>
         ) : (
           <>
-            <IconButton onClick={handleMenuOpen}>
+            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} size="small">
               <MoreVert />
             </IconButton>
-            <Menu
-              anchorEl={anchorEl}
-              open={Boolean(anchorEl)}
-              onClose={handleMenuClose}
-            >
-              <MenuItem onClick={() => { handleMenuClose(); handleCopyLink(); }}>
+            <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
+              <MenuItem
+                onClick={() => {
+                  setAnchorEl(null);
+                  void handleCopyLink();
+                }}
+              >
                 <Share sx={{ mr: 1 }} fontSize="small" /> {t('materialSearch.actions.copyLink', 'העתק קישור')}
               </MenuItem>
-              <MenuItem onClick={() => { handleMenuClose(); setSettingsOpen(true); }}>
+              <MenuItem
+                onClick={() => {
+                  setAnchorEl(null);
+                  setSettingsOpen(true);
+                }}
+              >
                 <SettingsIcon sx={{ mr: 1 }} fontSize="small" /> {t('materialSearch.settings.title', 'הגדרות תצוגה')}
               </MenuItem>
-              {hasSelection && (
-                <MenuItem 
-                  onClick={() => { handleMenuClose(); setCompareOpen(true); }}
-                  disabled={!canCompare}
-                >
-                  <CompareIcon sx={{ mr: 1 }} fontSize="small" /> {t('materialSearch.compare.button')} ({checkedRows.length})
-                </MenuItem>
-              )}
-              <MenuItem onClick={() => { handleMenuClose(); handleClearFilters(); }}>
-                <ClearAll sx={{ mr: 1 }} fontSize="small" /> {t('materialSearch.filters.clearFilters')}
+              <MenuItem
+                onClick={() => {
+                  setAnchorEl(null);
+                  handleClearFilters();
+                }}
+              >
+                <FilterAltOff sx={{ mr: 1 }} fontSize="small" /> {t('materialSearch.filters.clearFilters')}
               </MenuItem>
               {searchSubmitted && (
-                <MenuItem onClick={() => { handleMenuClose(); handleCopyMaterials(); }} disabled={isCopyDisabled}>
-                  {isCopying ? <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} /> : <ContentCopy sx={{ mr: 1 }} fontSize="small" />} {copyLabel}
+                <MenuItem
+                  onClick={() => {
+                    setAnchorEl(null);
+                    void handleCopyMaterials();
+                  }}
+                  disabled={isCopyDisabled}
+                >
+                  <ContentCopy sx={{ mr: 1 }} fontSize="small" /> {t('materialSearch.actions.copyMaterials')}
+                </MenuItem>
+              )}
+              {searchSubmitted && canCompare && (
+                <MenuItem
+                  onClick={() => {
+                    setAnchorEl(null);
+                    setCompareOpen(true);
+                  }}
+                >
+                  <CompareIcon sx={{ mr: 1 }} fontSize="small" /> {t('materialSearch.compare.button')}
+                </MenuItem>
+              )}
+              {canTransfer && (
+                <MenuItem
+                  onClick={() => {
+                    setAnchorEl(null);
+                    openErrorsReport();
+                  }}
+                  sx={{ color: '#B45309', fontWeight: 600 }}
+                >
+                  <FlightIcon sx={{ mr: 1, color: '#D97706' }} fontSize="small" />{' '}
+                  {t('materialSearch.transfer.button', 'דוח שגויים')} ({uniqueMatnrCount})
                 </MenuItem>
               )}
               {searchSubmitted && (
-                <MenuItem onClick={() => { handleMenuClose(); handleExport(); }} disabled={isExportDisabled}>
-                  {isExporting ? <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} /> : <FileDownload sx={{ mr: 1 }} fontSize="small" />} {exportLabel}
+                <MenuItem
+                  onClick={() => {
+                    setAnchorEl(null);
+                    void handleExport();
+                  }}
+                  disabled={isExportDisabled}
+                >
+                  <FileDownload sx={{ mr: 1 }} fontSize="small" /> {t('materialSearch.actions.exportExcel')}
+                </MenuItem>
+              )}
+              {hasSelection && (
+                <MenuItem
+                  onClick={() => {
+                    setAnchorEl(null);
+                    clearSelection();
+                  }}
+                >
+                  <CloseIcon sx={{ mr: 1 }} fontSize="small" /> {t('materialSearch.selection.clear', 'נקה בחירה')}
                 </MenuItem>
               )}
             </Menu>
@@ -316,10 +391,23 @@ export function TopBar() {
         )}
       </Box>
 
-      <FieldSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      
-      <Snackbar open={toastOpen} autoHideDuration={3000} onClose={() => setToastOpen(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert onClose={() => setToastOpen(false)} severity="success" sx={{ width: '100%' }}>
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <FieldSettingsDialog
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            initialTab={searchSubmitted ? 1 : 0}
+          />
+        </Suspense>
+      )}
+
+      <Snackbar
+        open={toastOpen}
+        autoHideDuration={2500}
+        onClose={() => setToastOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setToastOpen(false)} severity={toastSeverity} sx={{ width: '100%' }} variant="filled">
           {toastMessage}
         </Alert>
       </Snackbar>

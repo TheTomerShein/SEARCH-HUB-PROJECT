@@ -23,8 +23,14 @@ import { useTranslation } from 'react-i18next';
 import { useRecoilState, useRecoilValue } from 'recoil';
 import { compareModeOpenState, checkedRowsState, activeCompareFieldsState } from '../state/search.state';
 import { useMaterialCompareQuery, useOutputFieldsQuery } from '../hooks/useMaterialSearch';
-import { CompareFieldSelector } from '../types/material';
+import {
+  CompareFieldSelector,
+  fieldKey,
+  getRowFieldValue,
+  matnrFromResultRowId,
+} from '../types/material';
 import { TFunction } from 'i18next';
+import { formatDate } from '../../../utils/formatDate';
 
 const Transition = forwardRef(function Transition(
   props: TransitionProps & {
@@ -38,21 +44,14 @@ const Transition = forwardRef(function Transition(
 // Modern subtle accent colors for top borders of each compared item
 const COLUMN_COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B'];
 
-function formatDate(iso: string): string {
-  if (!iso) return '—';
-  try {
-    return new Intl.DateTimeFormat('he-IL', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(iso));
-  } catch {
-    return iso ?? '—';
-  }
-}
+const longDate = { year: 'numeric' as const, month: 'short' as const, day: 'numeric' as const };
 
 const formatters: Record<string, (v: any, t: TFunction) => string> = {
   MTART: (v, t) => t(`materialSearch.enums.materialType.${v}`),
   MBRSH: (v, t) => t(`materialSearch.enums.industrySector.${v}`),
   LVORM: (v, t) => v ? t('materialSearch.details.deleted') : t('materialSearch.details.active'),
-  ERSDA: (v) => formatDate(v),
-  LAEDA: (v) => formatDate(v),
+  ERSDA: (v) => formatDate(v, longDate),
+  LAEDA: (v) => formatDate(v, longDate),
 };
 
 export function MaterialCompareView() {
@@ -62,20 +61,32 @@ export function MaterialCompareView() {
   const activeCompareFields = useRecoilValue(activeCompareFieldsState);
   const { data: outputFields } = useOutputFieldsQuery();
 
-  const matnrsToCompare = useMemo(() => checkedRows.slice(0, 4), [checkedRows]);
+  // checkedRows are row ids (MATNR±plant); compare API is material-level
+  const matnrsToCompare = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const id of checkedRows) {
+      const matnr = matnrFromResultRowId(id);
+      if (!matnr || seen.has(matnr)) continue;
+      seen.add(matnr);
+      out.push(matnr);
+      if (out.length >= 4) break;
+    }
+    return out;
+  }, [checkedRows]);
 
   const fieldsToCompare = useMemo(() => {
     if (!outputFields) return [];
     if (!activeCompareFields) return outputFields;
-    return outputFields.filter(f => activeCompareFields.includes(f.field_name));
+    return outputFields.filter(f => activeCompareFields.includes(fieldKey(f)));
   }, [outputFields, activeCompareFields]);
 
   const fieldsToFetch = useMemo(() => {
-    const f: CompareFieldSelector[] = fieldsToCompare.map(f => ({ table_name: f.table_name, field_name: f.field_name }));
-    const hasField = (name: string) => f.some(field => field.field_name === name);
-    if (!hasField('LONG_TEXT')) f.push({ table_name: 'STXL', field_name: 'LONG_TEXT' });
-    if (!hasField('MAKTX')) f.push({ table_name: 'MAKT', field_name: 'MAKTX' });
-    if (!hasField('LVORM')) f.push({ table_name: 'MARA', field_name: 'LVORM' });
+    const f: CompareFieldSelector[] = fieldsToCompare.map(f => ({ tableName: f.tableName, fieldName: f.fieldName }));
+    const hasField = (name: string) => f.some(field => field.fieldName === name);
+    if (!hasField('LONG_TEXT')) f.push({ tableName: 'STXL', fieldName: 'LONG_TEXT' });
+    if (!hasField('MAKTX')) f.push({ tableName: 'MAKT', fieldName: 'MAKTX' });
+    if (!hasField('LVORM')) f.push({ tableName: 'MARA', fieldName: 'LVORM' });
     return f;
   }, [fieldsToCompare]);
 
@@ -237,12 +248,18 @@ export function MaterialCompareView() {
               <TableBody>
                 {/* Data rows */}
                 {fieldsToCompare.map((field) => {
-                  const allRawVals = allMaterials.map((m) => (m ? String((m as any)[field.field_name] ?? '') : null)).filter(Boolean);
+                  const allRawVals = allMaterials
+                    .map((m) => {
+                      if (!m) return null;
+                      const v = getRowFieldValue(m as unknown as Record<string, unknown>, field);
+                      return v != null && v !== '' ? String(v) : null;
+                    })
+                    .filter(Boolean);
                   const isDiff = allRawVals.length > 1 && new Set(allRawVals).size > 1;
 
                   return (
                     <TableRow 
-                      key={field.field_name} 
+                      key={fieldKey(field)}
                       hover 
                       sx={{ 
                         '&:hover .MuiTableCell-root': { bgcolor: isDiff ? '#fef08a' : '#f1f5f9' },
@@ -265,14 +282,16 @@ export function MaterialCompareView() {
                           transition: 'background-color 0.2s',
                         }}
                       >
-                        {t(field.hebrew_desc)}
+                        {t(field.hebrewDesc)}
                       </TableCell>
 
                       {/* Values */}
                       {allMaterials.map((material, i) => {
-                        const rawVal = material ? (material as any)[field.field_name] : null;
+                        const rawVal = material
+                          ? getRowFieldValue(material as unknown as Record<string, unknown>, field)
+                          : null;
                         const displayVal = material 
-                          ? (formatters[field.field_name] ? formatters[field.field_name](rawVal, t) : String(rawVal ?? '—'))
+                          ? (formatters[field.fieldName] ? formatters[field.fieldName](rawVal, t) : String(rawVal ?? '—'))
                           : '—';
 
                         return (
