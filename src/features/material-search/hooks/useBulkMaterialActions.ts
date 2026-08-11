@@ -14,7 +14,7 @@ import {
   type SearchInfiniteData,
 } from './useMaterialSearch';
 import { fetchAllMaterials } from '../api/materialService';
-import { Material, getResultRowId } from '../types/material';
+import { Material, getResultRowId, getRowMatnr } from '../types/material';
 import { resolveOutputColumns } from '../utils/resolveOutputColumns';
 import { projectRowsForExport } from '../utils/projectRowsForExport';
 import { useToast } from '../../../hooks/useToast';
@@ -61,7 +61,7 @@ export function useBulkMaterialActions() {
     try {
       const rows = await resolveRows();
       if (rows.length === 0) return;
-      const matnrs = [...new Set(rows.map((m) => m.MATNR).filter(Boolean))];
+      const matnrs = [...new Set(rows.map((m) => getRowMatnr(m)).filter(Boolean))];
       await navigator.clipboard.writeText(matnrs.join('\n'));
       showToast(t('materialSearch.actions.materialsCopied', 'החומרים הועתקו ללוח בהצלחה!'));
     } catch (error) {
@@ -78,10 +78,22 @@ export function useBulkMaterialActions() {
     try {
       const rows = await resolveRows();
       if (rows.length === 0) return;
-      const sheetRows = exportColumns ? projectRowsForExport(rows, exportColumns, t) : rows;
+      // Always project with field defs → Hebrew headers (never raw MATNR keys)
+      if (!exportColumns?.length) {
+        showToast(
+          t('materialSearch.actions.exportFailed', 'הייצוא נכשל'),
+          'error',
+        );
+        return;
+      }
+      const sheetRows = projectRowsForExport(rows, exportColumns, t);
       const xlsx = await import('xlsx');
       const worksheet = xlsx.utils.json_to_sheet(sheetRows);
+      // Hebrew UI → open sheet right-to-left in Excel
+      worksheet['!views'] = [{ rightToLeft: true, state: 'normal' }];
       const workbook = xlsx.utils.book_new();
+      workbook.Workbook = workbook.Workbook || {};
+      workbook.Workbook.Views = [{ RTL: true }];
       xlsx.utils.book_append_sheet(workbook, worksheet, 'Materials');
       xlsx.writeFile(
         workbook,
@@ -96,9 +108,17 @@ export function useBulkMaterialActions() {
     }
   }, [listMeta.hasData, resolveRows, exportColumns, t, hasSelection, checkedRows.length, showToast]);
 
+  /** Unique MATNRs: selection if any, else full result set (pages all results). */
+  const resolveMatnrs = useCallback(async (): Promise<string[]> => {
+    const rows = await resolveRows();
+    return [...new Set(rows.map((m) => getRowMatnr(m)).filter(Boolean))];
+  }, [resolveRows]);
+
   const isBusyPage = !hasSelection && listMeta.isFetchingNextPage;
   const isExportDisabled = listMeta.loadedCount === 0 || isExporting || isBusyPage;
   const isCopyDisabled = listMeta.loadedCount === 0 || isCopying || isBusyPage;
+  /** Transfer/export of “all” needs full list — block while still paging in. */
+  const isBulkAllDisabled = listMeta.loadedCount === 0 || isBusyPage;
 
   return {
     open,
@@ -113,8 +133,10 @@ export function useBulkMaterialActions() {
     isCopying,
     isExportDisabled,
     isCopyDisabled,
+    isBulkAllDisabled,
     handleExport,
     handleCopyMaterials,
+    resolveMatnrs,
     listMeta,
   };
 }

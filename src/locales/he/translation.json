@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "חיפוש חומרים MDG"
+    "title": "שרלוק"
   },
   "materialSearch": {
     "search": "חיפוש",
@@ -13,7 +13,6 @@
       "description": "תיאור חומר",
       "materialType": "סוג חומר (MTART)",
       "baseUnit": "יחידת מידה בסיסית",
-      "onlyActive": "הצג חומרים פעילים בלבד",
       "createdRange": "טווח תאריכי יצירה",
       "startDate": "מתאריך",
       "endDate": "עד תאריך",
@@ -48,12 +47,13 @@
       "cancel": "ביטול",
       "save": "שמור",
       "setDefault": "הגדר כברירת מחדל בפתיחה",
-      "isDefault": "ברירת מחדל לפתיחת המסך"
+      "isDefault": "ברירת מחדל לפתיחת המסך",
+      "currentLabel": "חיפוש נוכחי"
     },
     "actions": {
       "exportExcel": "ייצוא לאקסל",
       "copyMaterials": "העתק חומרים",
-      "copyMaterialsSelected": "העתק חומרים ({{count}})",
+      "copyMaterialsSelected": "העתק ({{count}})",
       "materialsCopied": "החומרים הועתקו ללוח בהצלחה!",
       "matnrCopied": "הועתק: {{matnr}}",
       "copyMatnr": "לחץ להעתקת מספר חומר",
@@ -64,6 +64,9 @@
     },
     "transfer": {
       "button": "דוח שגויים",
+      "buttonSelected": "דוח שגויים ({{count}})",
+      "selectedHint": "שליחת {{count}} חומרים נבחרים",
+      "allHint": "שליחת כל תוצאות החיפוש ({{count}})",
       "opened": "דוח שגויים נפתח · {{count}} חומרים נשלחו",
       "openFailed": "פתיחת דוח שגויים נכשלה"
     },
@@ -73,6 +76,7 @@
       "empty": "לא נמצאו תוצאות התואמות את החיפוש",
       "emptyHint": "נסה להרחיב את קריטריוני החיפוש, להסיר סינון, או לבדוק את מספר החומר.",
       "loading": "טוען חומרים...",
+      "loadingHint": "מריץ חיפוש מול השרת — רגע…",
       "error": "שגיאה בטעינת תוצאות החיפוש",
       "retry": "נסה שוב",
       "columns": {
@@ -89,7 +93,23 @@
         "netWeight": "משקל נטו",
         "weightUnit": "יח' משקל",
         "volume": "נפח",
-        "volumeUnit": "יח' נפח"
+        "volumeUnit": "יח' נפח",
+        "ean": "ברקוד (EAN)",
+        "basicMaterial": "חומר בסיס",
+        "extMaterialGroup": "קבוצת חומר חיצונית",
+        "labOffice": "מעבדה / משרד",
+        "batchMgmt": "ניהול אצוות",
+        "priority": "עדיפות",
+        "storageLoc": "מיקום אחסון",
+        "length": "אורך",
+        "width": "רוחב",
+        "height": "גובה",
+        "dimUnit": "יח' מימד",
+        "minShelfLife": "חיי מדף מינ׳",
+        "totalShelfLife": "חיי מדף כוללים",
+        "tempCond": "תנאי טמפ׳",
+        "storageCond": "תנאי אחסון",
+        "containerReq": "דרישת מכל"
       }
     },
     "details": {
@@ -125,13 +145,24 @@
         "C": "כימי (C)",
         "P": "פרמצבטי (P)",
         "E": "אלקטרוניקה (E)"
+      },
+      "priority": {
+        "1": "גבוהה (1)",
+        "2": "בינונית (2)",
+        "3": "נמוכה (3)"
       }
     },
     "settings": {
       "title": "הגדרות תצוגה",
+      "titleWithColumns": "הגדרות תצוגה · עמודות וסדר",
       "searchFields": "שדות לחיפוש",
       "outputColumns": "עמודות לתוצאה",
       "compareFields": "שדות להשוואה",
+      "chooseColumns": "בחירת עמודות",
+      "columnOrder": "סדר עמודות",
+      "dragHint": "גרור לשינוי סדר · או השתמש בחצים",
+      "moveUp": "הזז למעלה",
+      "moveDown": "הזז למטה",
       "resetDefaults": "שחזר לברירת מחדל",
       "clearSelection": "בטל בחירת הכל",
       "cancel": "ביטול",
@@ -141,10 +172,12 @@
     "compare": {
       "title": "השוואת חומרים",
       "button": "השוואה",
+      "selectHint": "בחר 2–4 חומרים להשוואה",
       "tooMany": "ניתן להשוות עד 4 חומרים בו-זמנית",
       "close": "סגור",
       "diffHighlight": "שדה שונה בין החומרים",
-      "field": "שדה"
+      "field": "שדה",
+      "noLocalData": "לא נמצאו נתונים להשוואה בתוצאות שנטענו. ודא שהחומרים מסומנים בטבלה."
     }
   }
 }

@@ -1,33 +1,21 @@
 import { fieldKey } from './types/material';
 
+export {
+  DEFAULT_WERKS_OPTIONS,
+  DEFAULT_WERKS_LABELS,
+} from './types/material';
+
 const useRealApi = import.meta.env.VITE_USE_REAL_API === 'true';
 
 /** Always required in results-table output columns; not removable in settings. */
 export const REQUIRED_OUTPUT_FIELD_NAME = 'MATNR';
 
-/** First-visit / “reset defaults” field names (input, output, compare). */
-export const DEFAULT_CRITERIA_FIELD_NAMES = [
-  'MATNR',
-  'WERKS',
-  'MATKL',
-  'MEINS',
-] as const;
+/** First-visit / reset defaults (criteria, output, compare share product set). */
+export const DEFAULT_FIELD_NAMES = ['MATNR', 'WERKS', 'MATKL', 'MEINS'] as const;
 
-/** Same product defaults for results-table columns. */
-export const DEFAULT_OUTPUT_FIELD_NAMES = [
-  'MATNR',
-  'WERKS',
-  'MATKL',
-  'MEINS',
-] as const;
-
-/** Same product defaults for compare view. */
-export const DEFAULT_COMPARE_FIELD_NAMES = [
-  'MATNR',
-  'WERKS',
-  'MATKL',
-  'MEINS',
-] as const;
+export const DEFAULT_CRITERIA_FIELD_NAMES = DEFAULT_FIELD_NAMES;
+export const DEFAULT_OUTPUT_FIELD_NAMES = DEFAULT_FIELD_NAMES;
+export const DEFAULT_COMPARE_FIELD_NAMES = DEFAULT_FIELD_NAMES;
 
 export function isRealApiMode(): boolean {
   return useRealApi;

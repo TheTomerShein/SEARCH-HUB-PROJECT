@@ -1,5 +1,6 @@
 import { atom, AtomEffect } from 'recoil';
 import { SearchCriteria } from '../types/material';
+import { applyCriteriaToUrl, criteriaFromSearchParams } from '../utils/criteriaUrlCodec';
 
 // --- Types ---
 export interface SavedSearch {
@@ -17,45 +18,17 @@ export interface SavedSearch {
 
 // --- Effects ---
 
-/**
- * Multi-value filters are written as comma-joined URL params (see onSet).
- * On restore, split them back into string[] so MATNR=X,Y → ['X','Y'] not 'X,Y'.
- * Booleans / *_LOGIC stay scalar; single values stay string (asStringList accepts both).
- */
-function parseCriteriaParam(key: string, v: string): string | boolean | string[] {
-  if (key.endsWith('_LOGIC')) return v;
-  if (v === 'true') return true;
-  if (v === 'false') return false;
-  if (v.includes(',')) {
-    return v.split(',').map((s) => s.trim()).filter(Boolean);
-  }
-  return v;
-}
-
 const urlSyncEffect: AtomEffect<SearchCriteria> = ({ setSelf, onSet }) => {
   if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    const criteria: Record<string, string | boolean | string[]> = {};
-    params.forEach((v, k) => {
-      if (!['f', 'c'].includes(k)) {
-        criteria[k] = parseCriteriaParam(k, v);
-      }
-    });
-    if (Object.keys(criteria).length > 0) setSelf(criteria as SearchCriteria);
+    const fromUrl = criteriaFromSearchParams(new URLSearchParams(window.location.search));
+    if (fromUrl) setSelf(fromUrl);
 
     onSet((newValue, _, isReset) => {
       const newUrl = new URL(window.location.href);
-      const f = newUrl.searchParams.get('f'), c = newUrl.searchParams.get('c');
-      newUrl.search = '';
-      if (f) newUrl.searchParams.set('f', f);
-      if (c) newUrl.searchParams.set('c', c);
-
-      if (!isReset && newValue && !(Object.keys(newValue).length === 1 && newValue.LVORM === false)) {
-        Object.entries(newValue).forEach(([k, v]) => {
-          if (v != null && v !== '' && (!Array.isArray(v) || v.length > 0)) {
-            newUrl.searchParams.set(k, Array.isArray(v) ? v.join(',') : String(v));
-          }
-        });
+      if (isReset) {
+        applyCriteriaToUrl(newUrl, null);
+      } else {
+        applyCriteriaToUrl(newUrl, newValue);
       }
       window.history.replaceState({}, '', newUrl.toString());
     });
@@ -87,9 +60,7 @@ const localStorageEffect = <T>(key: string): AtomEffect<T> => ({ setSelf, onSet 
 
 export const searchCriteriaState = atom<SearchCriteria>({
   key: 'materialSearchCriteria',
-  default: {
-    LVORM: false, // by default, only active materials
-  },
+  default: {},
   effects: [urlSyncEffect],
 });
 
@@ -110,29 +81,35 @@ export const defaultSavedSearchIdState = atom<string>({
 });
 
 /**
- * Tracks whether the user has explicitly submitted at least one search.
- *
- * When false (initial state) the search query is disabled — no network call
- * is made until the user clicks Search or types in a filter field.
- * This prevents an unwanted POST /api/materials/search on app load.
- *
- * The mock service ignores this flag and always returns data, so development
- * without a backend is unaffected.
+ * User has explicitly submitted a search this session.
+ * Always false on full page load/refresh so we open the criteria screen
+ * (URL may still pre-fill criteria via urlSyncEffect; user must press Search).
  */
 export const searchSubmittedState = atom<boolean>({
   key: 'searchSubmitted',
-  default: typeof window !== 'undefined' && Array.from(new URLSearchParams(window.location.search).keys()).some(k => !['f','c'].includes(k)),
+  default: false,
 });
 
 
-export const selectedMaterialNumberState = atom<string | null>({
+/**
+ * Detail-panel selection: getResultRowId (MATNR, or MATNR+plant).
+ * Parsed into matnr/werks before GET /api/materials/:id?werks=...
+ * Recoil key kept as selectedMaterialNumber for session stability.
+ */
+export const selectedResultRowIdState = atom<string | null>({
   key: 'selectedMaterialNumber',
   default: null,
 });
 
+/**
+ * active*Fields null:
+ * - Before useInitDefaultFields: not seeded yet (treat as show-all until seed).
+ * - After seed / settings "all" (mock): show all fields.
+ * Prefer string[] after first visit when product defaults apply.
+ */
 export const activeSearchFieldsState = atom<string[] | null>({
   key: 'activeSearchFields',
-  default: null, // null means "show all fields" (not yet initialized)
+  default: null,
 });
 
 const urlSyncArrayEffect = (paramName: string): AtomEffect<string[] | null> => ({ setSelf, onSet }) => {
@@ -150,10 +127,42 @@ const urlSyncArrayEffect = (paramName: string): AtomEffect<string[] | null> => (
   }
 };
 
+/**
+ * Selected output column keys **in display/export order**.
+ * URL `f` overrides; else localStorage per browser user.
+ * null = not set yet (seeded by useInitDefaultFields).
+ */
 export const activeOutputFieldsState = atom<string[] | null>({
   key: 'activeOutputFields',
-  default: null, // null means "show all columns" — not encoded in URL
-  effects: [urlSyncArrayEffect('f')],
+  default: null,
+  effects: [
+    ({ setSelf, onSet }) => {
+      if (typeof window === 'undefined') return;
+      const LS = 'materialActiveOutputFields';
+      const fromUrl = new URLSearchParams(window.location.search).get('f');
+      if (!fromUrl) {
+        const raw = window.localStorage.getItem(LS);
+        if (raw != null) {
+          try {
+            const parsed = JSON.parse(raw) as unknown;
+            if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+              setSelf(parsed as string[]);
+            }
+          } catch {
+            /* ignore bad cache */
+          }
+        }
+      }
+      onSet((newValue, _, isReset) => {
+        if (isReset || newValue == null || newValue.length === 0) {
+          window.localStorage.removeItem(LS);
+        } else {
+          window.localStorage.setItem(LS, JSON.stringify(newValue));
+        }
+      });
+    },
+    urlSyncArrayEffect('f'),
+  ],
 });
 
 export const activeCompareFieldsState = atom<string[] | null>({
@@ -164,7 +173,7 @@ export const activeCompareFieldsState = atom<string[] | null>({
 
 /**
  * Result-row selection ids (getResultRowId: MATNR, or MATNR+plant).
- * Not the same as selectedMaterialNumberState (detail panel).
+ * Not the same as selectedResultRowIdState (detail panel).
  * Reset to [] when filters are cleared.
  */
 export const checkedRowsState = atom<string[]>({

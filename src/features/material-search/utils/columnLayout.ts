@@ -18,7 +18,6 @@ export function columnClassName(field: OutputFieldDefinition): string {
   if (n === 'MATNR') return 'mdg-result-cell mdg-col-matnr';
   if (n === 'MAKTX' || n === 'LONG_TEXT') return 'mdg-result-cell mdg-col-desc';
   if (n === 'WERKS' || n === 'WERKS_DISP') return 'mdg-result-cell mdg-col-plant';
-  if (n === 'LVORM') return 'mdg-result-cell mdg-col-status';
   if (type === 'DATS' || type === 'DATE' || n === 'ERSDA' || n === 'LAEDA') {
     return 'mdg-result-cell mdg-col-date';
   }
@@ -50,7 +49,6 @@ export function estimateScrollMinWidthPx(fields: OutputFieldDefinition[] | undef
     const type = (f.fieldType ?? '').toUpperCase();
     if (n === 'MAKTX' || n === 'LONG_TEXT') w += 140;
     else if (n === 'WERKS') w += 72;
-    else if (n === 'LVORM') w += 100;
     else if (type === 'DATS' || type === 'DATE' || n === 'ERSDA' || n === 'LAEDA') w += 88;
     else if (n === 'MEINS' || n === 'MTART' || n === 'MBRSH' || n === 'MATKL' || n === 'SPART') w += 80;
     else w += 96;

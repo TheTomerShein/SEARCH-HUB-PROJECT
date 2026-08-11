@@ -14,9 +14,12 @@ export function CodeDescValue({
 }) {
   if (!code && !description) return <>{'\u2014'}</>;
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, minWidth: 0 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.15, minWidth: 0 }}>
       {description ? (
-        <Typography component="span" sx={{ fontWeight: 600, fontSize: '0.875rem', color: 'text.primary', lineHeight: 1.3 }}>
+        <Typography
+          component="span"
+          sx={{ fontWeight: 600, fontSize: '0.9rem', color: 'text.primary', lineHeight: 1.35 }}
+        >
           {description}
         </Typography>
       ) : null}
@@ -25,7 +28,7 @@ export function CodeDescValue({
           component="span"
           sx={{
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-            fontSize: '0.72rem',
+            fontSize: '0.75rem',
             fontWeight: 600,
             color: 'text.secondary',
             letterSpacing: '0.02em',
@@ -54,33 +57,34 @@ export function InfoCard({
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 1,
-        p: 2,
-        borderRadius: 2.5,
+        gap: 0.65,
+        p: 1.5,
+        borderRadius: 2,
         border: '1px solid',
         borderColor: 'rgba(226,232,240,0.8)',
         bgcolor: '#FAFBFF',
         position: 'relative',
         overflow: 'hidden',
+        minHeight: 0,
         '&::before': {
           content: '""',
           position: 'absolute',
           right: 0,
-          top: '15%',
-          bottom: '15%',
-          width: 3,
-          borderRadius: '3px 0 0 3px',
+          top: '16%',
+          bottom: '16%',
+          width: 2.5,
+          borderRadius: '2px 0 0 2px',
           bgcolor: accent,
           opacity: 0.5,
         },
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
         <Box
           sx={{
-            width: 28,
-            height: 28,
-            borderRadius: 1.5,
+            width: 24,
+            height: 24,
+            borderRadius: 1.25,
             bgcolor: `${accent}18`,
             display: 'flex',
             alignItems: 'center',
@@ -97,16 +101,17 @@ export function InfoCard({
             color: 'text.disabled',
             fontWeight: 700,
             textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            fontSize: '0.6rem',
+            letterSpacing: '0.04em',
+            fontSize: '0.68rem',
+            lineHeight: 1.25,
           }}
         >
           {label}
         </Typography>
       </Box>
-      <Box sx={{ pl: 0.5, minWidth: 0 }}>
+      <Box sx={{ pl: 0.35, minWidth: 0 }}>
         {value ?? (
-          <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary', fontSize: '0.875rem' }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary', fontSize: '0.9rem' }}>
             —
           </Typography>
         )}
@@ -129,58 +134,58 @@ export function TimelineRow({
   accent: string;
 }) {
   return (
-    <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+    <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
       <Box
         sx={{
-          width: 36,
-          height: 36,
+          width: 32,
+          height: 32,
           borderRadius: '50%',
           flexShrink: 0,
           bgcolor: `${accent}15`,
-          border: `2px solid ${accent}30`,
+          border: `1.5px solid ${accent}30`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           color: accent,
-          mt: 0.25,
+          mt: 0.2,
         }}
       >
         {icon}
       </Box>
-      <Box sx={{ flex: 1, pb: 2, borderBottom: '1px dashed rgba(226,232,240,0.9)' }}>
+      <Box sx={{ flex: 1, pb: 1.5, borderBottom: '1px dashed rgba(226,232,240,0.9)' }}>
         <Typography
           variant="caption"
           sx={{
             color: 'text.disabled',
             textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            fontSize: '0.6rem',
+            letterSpacing: '0.04em',
+            fontSize: '0.68rem',
             fontWeight: 700,
           }}
         >
           {label}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mt: 0.5, flexWrap: 'wrap' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <PersonOutlined sx={{ fontSize: '0.9rem', color: 'text.secondary' }} />
-            <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.85rem' }}>
+        <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center', mt: 0.4, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
+            <PersonOutlined sx={{ fontSize: '0.95rem', color: 'text.secondary' }} />
+            <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.88rem' }}>
               {user || '—'}
             </Typography>
           </Box>
           <Box
             sx={{
-              px: 1,
+              px: 0.9,
               py: 0.2,
               borderRadius: '20px',
               bgcolor: `${accent}10`,
               border: `1px solid ${accent}25`,
               display: 'flex',
               alignItems: 'center',
-              gap: 0.4,
+              gap: 0.35,
             }}
           >
-            <CalendarTodayOutlined sx={{ fontSize: '0.7rem', color: accent }} />
-            <Typography variant="caption" sx={{ fontSize: '0.7rem', color: accent, fontWeight: 600 }}>
+            <CalendarTodayOutlined sx={{ fontSize: '0.75rem', color: accent }} />
+            <Typography variant="caption" sx={{ fontSize: '0.75rem', color: accent, fontWeight: 600 }}>
               {date}
             </Typography>
           </Box>
@@ -196,46 +201,41 @@ export function DetailLoadingSkeleton() {
       <Box
         sx={{
           background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-          px: 3.5,
-          pt: 2.5,
-          pb: 4,
+          px: 2.5,
+          pt: 2,
+          pb: 2.5,
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
           <Skeleton
             variant="rounded"
-            width={56}
-            height={56}
-            sx={{ borderRadius: 2, bgcolor: 'rgba(255,255,255,0.2)', flexShrink: 0 }}
+            width={42}
+            height={42}
+            sx={{ borderRadius: 1.75, bgcolor: 'rgba(255,255,255,0.2)', flexShrink: 0 }}
           />
           <Box sx={{ flex: 1 }}>
-            <Skeleton variant="text" width={80} height={12} sx={{ bgcolor: 'rgba(255,255,255,0.2)', mb: 1 }} />
-            <Skeleton variant="text" width={180} height={32} sx={{ bgcolor: 'rgba(255,255,255,0.25)' }} />
-            <Skeleton
-              variant="text"
-              width={240}
-              height={18}
-              sx={{ bgcolor: 'rgba(255,255,255,0.18)', mt: 0.5 }}
-            />
+            <Skeleton variant="text" width={75} height={11} sx={{ bgcolor: 'rgba(255,255,255,0.2)', mb: 0.65 }} />
+            <Skeleton variant="text" width={160} height={26} sx={{ bgcolor: 'rgba(255,255,255,0.25)' }} />
+            <Skeleton variant="text" width={200} height={16} sx={{ bgcolor: 'rgba(255,255,255,0.18)', mt: 0.35 }} />
             <Skeleton
               variant="rounded"
-              width={60}
-              height={22}
-              sx={{ bgcolor: 'rgba(255,255,255,0.2)', mt: 1, borderRadius: 10 }}
+              width={56}
+              height={20}
+              sx={{ bgcolor: 'rgba(255,255,255,0.2)', mt: 0.85, borderRadius: 10 }}
             />
           </Box>
         </Box>
       </Box>
-      <DialogContent sx={{ p: 3.5 }}>
-        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2, mb: 3 }}>
+      <DialogContent sx={{ p: 2.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1.5, mb: 2.25 }}>
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} variant="rounded" height={80} sx={{ borderRadius: 2.5 }} />
+            <Skeleton key={i} variant="rounded" height={64} sx={{ borderRadius: 2 }} />
           ))}
         </Box>
-        <Skeleton variant="rounded" height={100} sx={{ borderRadius: 2, mb: 3 }} />
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Skeleton variant="rounded" height={72} sx={{ borderRadius: 2, mb: 2.25 }} />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {[1, 2].map((i) => (
-            <Skeleton key={i} variant="rounded" height={60} sx={{ borderRadius: 2 }} />
+            <Skeleton key={i} variant="rounded" height={48} sx={{ borderRadius: 2 }} />
           ))}
         </Box>
       </DialogContent>

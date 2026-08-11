@@ -58,8 +58,9 @@ export function ActiveFilterChips() {
   // Iterate over other criteria
   Object.entries(criteria).forEach(([key, value]) => {
     if (key === 'ERSDA_START' || key === 'ERSDA_END') return; // Handled above
+    // Keep AND/OR (e.g. WERKS_LOGIC) for backend only — not user-facing chips
+    if (key.endsWith('_LOGIC') || key.startsWith('$')) return;
     if (value === undefined || value === null || value === '') return;
-    if (key === 'LVORM' && value === false) return; // Default state, no chip
 
     const fieldDef = searchFields.find(f => f.fieldName === key);
     const fieldLabel = fieldDef ? t(fieldDef.hebrewDesc) : key;
@@ -82,10 +83,6 @@ export function ActiveFilterChips() {
             return next;
           });
         });
-      });
-    } else if (key === 'LVORM' && value === true) {
-      addChip(key, `${fieldLabel}: ${t('materialSearch.details.deleted', 'מחוקים')}`, () => {
-        setCriteria(prev => ({ ...prev, LVORM: false }));
       });
     } else {
       let displayVal = value;

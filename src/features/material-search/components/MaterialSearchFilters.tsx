@@ -19,6 +19,9 @@ import {
   DialogActions,
   IconButton,
   InputAdornment,
+  Tooltip,
+  CircularProgress,
+  Fab,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterAltOffIcon from '@mui/icons-material/FilterAltOff';
@@ -32,6 +35,13 @@ import {
   FieldOption,
   fieldKey,
 } from '../types/material';
+import {
+  asStringList,
+  dedupeStrings,
+  handleMultiPaste,
+} from './filters/multiValuePaste';
+
+export { defaultCriteria } from '../defaultCriteria';
 
 export interface MaterialSearchFiltersProps {
   fields: SearchFieldDefinition[];
@@ -47,84 +57,12 @@ export interface MaterialSearchFiltersProps {
   stickyActions?: boolean;
 }
 
-export const defaultCriteria: SearchCriteria = {
-  LVORM: false, // Default to not showing deleted materials
-};
-
 const HEEBO = '"Heebo", "Segoe UI", system-ui, sans-serif';
 /** Only ever mount this many Chip nodes in the field (even when focused). */
 const LIMIT_TAGS = 2;
 
 /** Narrow i18n fn — old i18next `TFunction` return type is not ReactNode-safe. */
 type Translate = (key: string, defaultOrOpts?: string | Record<string, unknown>) => string;
-
-function asStringList(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.map(String).filter((s) => s.length > 0);
-  if (raw == null || raw === '') return [];
-  return [String(raw)];
-}
-
-/** O(n) dedupe — no max; field only renders LIMIT_TAGS chips. */
-function dedupeStrings(list: Iterable<string>): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of list) {
-    const s = String(raw).trim();
-    if (!s || seen.has(s)) continue;
-    seen.add(s);
-    out.push(s);
-  }
-  return out;
-}
-
-/**
- * Split clipboard text into tokens (Excel/CSV/list paste).
- * Supports newlines, tabs, commas, semicolons; multi-space as last resort.
- */
-function parsePasteTokens(text: string, digitsOnly?: boolean): string[] {
-  const raw = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  if (!raw) return [];
-
-  let parts: string[];
-  if (/[\n\t,;]/.test(raw)) {
-    parts = raw.split(/[\n\t,;]+/);
-  } else if (/\s/.test(raw) && raw.split(/\s+/).length > 1) {
-    parts = raw.split(/\s+/);
-  } else {
-    parts = [raw];
-  }
-
-  parts = parts.map((s) => s.trim()).filter(Boolean);
-  if (digitsOnly) {
-    parts = parts.map((s) => s.replace(/\D/g, '')).filter(Boolean);
-  }
-  return parts;
-}
-
-/** Ctrl/Cmd+V → chips (capped + deduped). */
-function handleMultiPaste(
-  e: React.ClipboardEvent,
-  current: string[],
-  onChangeValues: (next: string[]) => void,
-  opts?: { digitsOnly?: boolean; resolveToken?: (token: string) => string | null },
-) {
-  const text = e.clipboardData.getData('text/plain');
-  if (!text) return;
-
-  let tokens = parsePasteTokens(text, opts?.digitsOnly);
-  if (tokens.length === 0) return;
-
-  if (opts?.resolveToken) {
-    tokens = tokens
-      .map((t) => opts.resolveToken!(t))
-      .filter((t): t is string => t != null && t.length > 0);
-  }
-  if (tokens.length === 0) return;
-
-  e.preventDefault();
-  e.stopPropagation();
-  onChangeValues(dedupeStrings([...current, ...tokens]));
-}
 
 const chipSx = {
   height: 24,
@@ -807,11 +745,7 @@ export function MaterialSearchFilters({
   };
 
   const handleCheckboxChange = (field: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (field === 'LVORM') {
-      onChange({ ...criteria, [field]: !event.target.checked });
-    } else {
-      onChange({ ...criteria, [field]: event.target.checked });
-    }
+    onChange({ ...criteria, [field]: event.target.checked });
   };
 
   const handleLogicChange = (field: string) => (
@@ -847,51 +781,45 @@ export function MaterialSearchFilters({
       const selectedPlants = asStringList((criteria as any)[field.fieldName]);
 
       return (
-        <Box
-          key={rowKey}
-          sx={{
-            gridColumn: grid ? { xs: 'span 1', sm: 'span 2' } : undefined,
-          }}
-        >
-          <FieldLabel label={fieldLabel}>
-            <OptionsMultiField
-              values={selectedPlants}
-              options={field.options ?? []}
-              onChangeValues={(next) => setFieldValues(field.fieldName, next)}
-              placeholder={fieldLabel}
-              size={inputSize}
-              t={t}
-              fieldTitle={fieldLabel}
-            />
-            <Box sx={{ display: 'flex', gap: 0.5, mt: 1 }}>
-              <ToggleButtonGroup
-                value={currentLogic}
-                exclusive
-                onChange={handleLogicChange(field.fieldName)}
-                aria-label="logic operator"
-                size="small"
-                fullWidth
-                sx={{
-                  '& .MuiToggleButton-root': {
-                    whiteSpace: 'nowrap',
-                    fontSize: '0.72rem',
-                    py: 0.4,
-                    textTransform: 'none',
-                    borderColor: 'divider',
-                    fontFamily: HEEBO,
-                  },
-                }}
-              >
-                <ToggleButton value="OR" aria-label="match any">
-                  {t('materialSearch.filters.matchAny')}
-                </ToggleButton>
-                <ToggleButton value="AND" aria-label="match all">
-                  {t('materialSearch.filters.matchAll')}
-                </ToggleButton>
-              </ToggleButtonGroup>
-            </Box>
-          </FieldLabel>
-        </Box>
+        <FieldLabel key={rowKey} label={fieldLabel}>
+          <OptionsMultiField
+            values={selectedPlants}
+            options={field.options ?? []}
+            onChangeValues={(next) => setFieldValues(field.fieldName, next)}
+            placeholder={fieldLabel}
+            size="small"
+            t={t}
+            fieldTitle={fieldLabel}
+          />
+          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.75 }}>
+            <ToggleButtonGroup
+              value={currentLogic}
+              exclusive
+              onChange={handleLogicChange(field.fieldName)}
+              aria-label="logic operator"
+              size="small"
+              fullWidth
+              sx={{
+                '& .MuiToggleButton-root': {
+                  whiteSpace: 'nowrap',
+                  fontSize: '0.68rem',
+                  py: 0.25,
+                  minHeight: 28,
+                  textTransform: 'none',
+                  borderColor: 'divider',
+                  fontFamily: HEEBO,
+                },
+              }}
+            >
+              <ToggleButton value="OR" aria-label="match any">
+                {t('materialSearch.filters.matchAny')}
+              </ToggleButton>
+              <ToggleButton value="AND" aria-label="match all">
+                {t('materialSearch.filters.matchAll')}
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        </FieldLabel>
       );
     }
 
@@ -993,17 +921,12 @@ export function MaterialSearchFilters({
     }
 
     if (type === 'BOOLEAN') {
-      const isLvorm = field.fieldName === 'LVORM';
-      const isChecked = isLvorm
-        ? !((criteria as any)[field.fieldName])
-        : !!((criteria as any)[field.fieldName]);
-
       return (
         <FormControlLabel
           key={rowKey}
           control={
             <Checkbox
-              checked={isChecked}
+              checked={!!((criteria as any)[field.fieldName])}
               onChange={(e) => handleCheckboxChange(field.fieldName)(e as any)}
             />
           }
@@ -1140,43 +1063,81 @@ export function MaterialSearchFilters({
           {t('materialSearch.filters.clearFilters')}
         </Button>
 
-        <Button
-          type="submit"
-          variant="contained"
-          fullWidth={!grid}
-          size={buttonSize}
-          startIcon={<SearchIcon />}
-          disabled={isLoading}
-          sx={
-            grid
-              ? {
-                  minWidth: 180,
-                  background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-                  boxShadow: '0 4px 14px rgba(79, 70, 229, 0.4)',
-                  fontWeight: 700,
-                  letterSpacing: '0.02em',
-                  fontSize: '1rem',
-                  py: 1.5,
+        {grid ? (
+          <Tooltip
+            title={
+              isLoading
+                ? t('materialSearch.results.loading', 'טוען חומרים...')
+                : t('materialSearch.search', 'חיפוש')
+            }
+            arrow
+            placement="top"
+          >
+            <span>
+              <Fab
+                type="submit"
+                color="primary"
+                className={isLoading ? 'mdg-search-fab--busy' : undefined}
+                aria-label={t('materialSearch.search', 'חיפוש')}
+                aria-busy={isLoading || undefined}
+                disabled={isLoading}
+                sx={{
+                  width: 72,
+                  height: 72,
+                  background: 'linear-gradient(145deg, #6366F1 0%, #4F46E5 45%, #7C3AED 100%)',
+                  boxShadow:
+                    '0 8px 24px rgba(79, 70, 229, 0.4), 0 0 0 6px rgba(79, 70, 229, 0.1)',
+                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                   '&:hover': {
-                    background: 'linear-gradient(135deg, #4338CA 0%, #6D28D9 100%)',
-                    boxShadow: '0 6px 20px rgba(79, 70, 229, 0.5)',
-                    transform: 'translateY(-2px)',
+                    background: 'linear-gradient(145deg, #4F46E5 0%, #4338CA 50%, #6D28D9 100%)',
+                    boxShadow:
+                      '0 12px 32px rgba(79, 70, 229, 0.5), 0 0 0 8px rgba(79, 70, 229, 0.14)',
+                    transform: isLoading ? 'none' : 'translateY(-3px) scale(1.04)',
                   },
                   '&:active': {
-                    transform: 'translateY(0)',
-                    boxShadow: '0 2px 8px rgba(79, 70, 229, 0.3)',
+                    transform: 'translateY(0) scale(0.98)',
+                    boxShadow: '0 4px 14px rgba(79, 70, 229, 0.35)',
                   },
-                  transition: 'all 0.2s ease',
-                }
-              : {
-                  fontWeight: 700,
-                  boxShadow: 'none',
-                  '&:hover': { boxShadow: '0 2px 8px rgba(79, 70, 229, 0.25)', transform: 'none' },
-                }
-          }
-        >
-          {isLoading ? t('materialSearch.results.loading') : t('materialSearch.search')}
-        </Button>
+                  '&.Mui-disabled': {
+                    background: 'linear-gradient(145deg, #6366F1 0%, #4F46E5 50%, #7C3AED 100%)',
+                    color: '#fff',
+                    opacity: 1,
+                  },
+                }}
+              >
+                {isLoading ? (
+                  <CircularProgress size={30} thickness={4} sx={{ color: '#fff' }} />
+                ) : (
+                  <SearchIcon className="mdg-search-fab-icon" sx={{ fontSize: 36 }} />
+                )}
+              </Fab>
+            </span>
+          </Tooltip>
+        ) : (
+          <Button
+            type="submit"
+            variant="contained"
+            fullWidth
+            size={buttonSize}
+            startIcon={
+              isLoading ? (
+                <CircularProgress size={18} thickness={4} color="inherit" />
+              ) : (
+                <SearchIcon />
+              )
+            }
+            disabled={isLoading}
+            aria-busy={isLoading || undefined}
+            sx={{
+              fontWeight: 700,
+              boxShadow: 'none',
+              minHeight: 42,
+              '&:hover': { boxShadow: '0 2px 8px rgba(79, 70, 229, 0.25)', transform: 'none' },
+            }}
+          >
+            {isLoading ? t('materialSearch.results.loading') : t('materialSearch.search')}
+          </Button>
+        )}
       </Box>
     </Box>
   );

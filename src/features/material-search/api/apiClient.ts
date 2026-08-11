@@ -48,13 +48,16 @@ export class ApiError extends Error {
 // Axios instance
 // ---------------------------------------------------------------------------
 
+/** Optional Basic auth from env only — never hardcode credentials in source. */
+const basicUser = (import.meta.env.VITE_API_BASIC_USER as string | undefined)?.trim();
+const basicPass = (import.meta.env.VITE_API_BASIC_PASSWORD as string | undefined)?.trim();
+
 const http = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
-  auth: {
-    username: 'S9082981',
-    password: 'Tetro420',
-  },
+  ...(basicUser && basicPass
+    ? { auth: { username: basicUser, password: basicPass } }
+    : {}),
   headers: {
     'Content-Type': 'application/json',
   },

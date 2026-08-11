@@ -1,4 +1,4 @@
-# MDG Material Search
+# שרלוק · Sherlok
 
 High-performance SAP MDG material search UI — React + Vite + TypeScript + MUI.
 
@@ -82,9 +82,19 @@ Create `.env.local` (do **not** commit secrets):
 
 ```env
 VITE_USE_REAL_API=true
+# Local: empty — Vite proxies /api → https://mdg.dev.erp.idf (see vite.config.ts)
 VITE_API_BASE_URL=
-# Prefer proxy/session auth — never hardcode passwords in source
 ```
+
+**Deploy (UI on GW, API on MDG):**
+
+```env
+VITE_USE_REAL_API=true
+VITE_API_BASE_URL=https://mdg.dev.erp.idf
+```
+
+Empty base on GW calls `https://<gw-host>/api/...` → **404** (fields API lives on MDG, not GW).  
+Cross-origin MDG calls need CORS (+ no 302 on the API path) **or** reverse-proxy `/api` on GW to MDG and keep base empty.
 
 ```bash
 npm run build

@@ -11,8 +11,17 @@ import {
   Typography,
   IconButton,
   TextField,
+  Tooltip,
 } from '@mui/material';
-import { Close as CloseIcon, SettingsBackupRestore, ClearAll } from '@mui/icons-material';
+import {
+  Close as CloseIcon,
+  SettingsBackupRestore,
+  ClearAll,
+  KeyboardArrowUp,
+  KeyboardArrowDown,
+  PushPin,
+  DragIndicator,
+} from '@mui/icons-material';
 import { FixedSizeList as List, ListChildComponentProps, areEqual } from 'react-window';
 import { useTranslation } from 'react-i18next';
 import { useRecoilState } from 'recoil';
@@ -41,6 +50,7 @@ type FieldItem = { key: string; label: string; locked?: boolean };
 
 const ROW_HEIGHT = 36;
 const LIST_HEIGHT = 320;
+const ORDER_LIST_HEIGHT = 280;
 
 // ─── Lightweight row (native checkbox — no MUI per row) ─────────────────────
 
@@ -108,10 +118,12 @@ function FieldCheckList({
   items,
   checkedSet,
   onToggle,
+  height = LIST_HEIGHT,
 }: {
   items: FieldItem[];
   checkedSet: Set<string>;
   onToggle: (key: string) => void;
+  height?: number;
 }) {
   const itemData = useMemo(
     () => ({ items, checkedSet, onToggle }),
@@ -128,7 +140,7 @@ function FieldCheckList({
 
   return (
     <List
-      height={LIST_HEIGHT}
+      height={height}
       width="100%"
       itemCount={items.length}
       itemSize={ROW_HEIGHT}
@@ -225,6 +237,66 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
     [toggleIn],
   );
 
+  const dragKeyRef = useRef<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+
+  /** Move output column in draft order (MATNR stays first). */
+  const moveOutputKey = useCallback(
+    (key: string, dir: -1 | 1) => {
+      if (matnrOutputKey && key === matnrOutputKey) return;
+      setDraftOutput((prev) => {
+        const ordered = outputFields
+          ? ensureMatnrInOutputKeys(prev, outputFields)
+          : prev;
+        const idx = ordered.indexOf(key);
+        if (idx < 0) return prev;
+        const swapWith = idx + dir;
+        // index 0 = MATNR — never swap into or out of pin slot via non-matnr moves
+        if (swapWith < 1 || swapWith >= ordered.length) return prev;
+        const next = [...ordered];
+        [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+        return next;
+      });
+    },
+    [matnrOutputKey, outputFields],
+  );
+
+  /**
+   * Drag-and-drop reorder: move dragged key to target index (MATNR stays first).
+   * Uses splice(from) then splice(to, 0, item) with the *original* `to` —
+   * do NOT use `to - 1` when moving down (that no-ops adjacent swaps e.g. 3↔4).
+   */
+  const reorderOutputKey = useCallback(
+    (fromKey: string, toKey: string) => {
+      if (!fromKey || !toKey || fromKey === toKey) return;
+      if (matnrOutputKey && fromKey === matnrOutputKey) return;
+      setDraftOutput((prev) => {
+        const ordered = outputFields
+          ? ensureMatnrInOutputKeys(prev, outputFields)
+          : [...prev];
+        const from = ordered.indexOf(fromKey);
+        let to = ordered.indexOf(toKey);
+        if (from < 0 || to < 0) return prev;
+        // Cannot place anything before / on MATNR slot
+        if (matnrOutputKey && (to === 0 || toKey === matnrOutputKey)) {
+          to = 1;
+        }
+        if (from === to) return prev;
+        const next = [...ordered];
+        const [item] = next.splice(from, 1);
+        // After removing `from`, if we removed an item *before* `to`, the old
+        // target index is already accounted for by splicing at original `to`
+        // only when from > to. When from < to, `to` still lands on the right
+        // slot in the shortened array (e.g. 2→3 adjacent swap works).
+        const minIdx = matnrOutputKey ? 1 : 0;
+        const insertAt = Math.max(minIdx, Math.min(to, next.length));
+        next.splice(insertAt, 0, item);
+        return outputFields ? ensureMatnrInOutputKeys(next, outputFields) : next;
+      });
+    },
+    [matnrOutputKey, outputFields],
+  );
+
   /** Clear all selections on the active tab (draft only). Output tab keeps MATNR. */
   const handleClearSelection = () => {
     if (tabValue === 0) setDraftSearch([]);
@@ -247,15 +319,11 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
 
   const handleApply = () => {
     setActiveSearchFields(draftSearch);
+    // Always persist ordered keys — order drives results table + Excel export
     const outputToSave = outputFields
       ? ensureMatnrInOutputKeys(draftOutput, outputFields)
       : draftOutput;
-    // mock null = show all — keep URL clean when every output/compare field selected
-    if (!isRealApiMode() && outputToSave.length === allOutputKeys.length) {
-      setActiveOutputFields(null);
-    } else {
-      setActiveOutputFields(outputToSave);
-    }
+    setActiveOutputFields(outputToSave);
     if (!isRealApiMode() && draftCompare.length === allOutputKeys.length) {
       setActiveCompareFields(null);
     } else {
@@ -308,11 +376,30 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
     tabValue === 0
       ? 'בחר אילו שדות יופיעו בחלונית הסינון:'
       : tabValue === 1
-        ? 'בחר אילו עמודות יופיעו בטבלת התוצאות:'
+        ? 'בחר עמודות וסדר אותן — הסדר חל על הטבלה ועל ייצוא לאקסל:'
         : 'בחר אילו שדות יופיעו במסך ההשוואה:';
 
+  const labelByOutputKey = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const item of outputItems) m.set(item.key, item.label);
+    // unfiltered labels when search hides some selected rows
+    if (outputFields) {
+      for (const f of outputFields) {
+        const k = fieldKey(f);
+        if (!m.has(k)) m.set(k, t(f.hebrewDesc));
+      }
+    }
+    return m;
+  }, [outputItems, outputFields, t]);
+
+  const orderedOutputKeys = useMemo(
+    () =>
+      outputFields ? ensureMatnrInOutputKeys(draftOutput, outputFields) : draftOutput,
+    [draftOutput, outputFields],
+  );
+
   return (
-    <Dialog open={open} onClose={handleCancel} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={handleCancel} maxWidth={tabValue === 1 ? 'md' : 'sm'} fullWidth>
       <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {t('materialSearch.settings.title', 'הגדרות תצוגה')}
         <IconButton aria-label="close" onClick={handleCancel} sx={{ color: (theme) => theme.palette.grey[500] }}>
@@ -356,17 +443,187 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
           </Box>
         </Box>
 
-        <Box sx={{ px: 2, pb: 2, height: LIST_HEIGHT, scrollbarGutter: 'stable' }}>
-          {tabValue === 0 && (
-            <FieldCheckList items={searchItems} checkedSet={searchChecked} onToggle={handleSearchToggle} />
-          )}
-          {tabValue === 1 && (
-            <FieldCheckList items={outputItems} checkedSet={outputChecked} onToggle={handleOutputToggle} />
-          )}
-          {tabValue === 2 && (
-            <FieldCheckList items={outputItems} checkedSet={compareChecked} onToggle={handleCompareToggle} />
-          )}
-        </Box>
+        {tabValue === 1 ? (
+          <Box
+            sx={{
+              px: 2,
+              pb: 2,
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+              gap: 2,
+              alignItems: 'stretch',
+            }}
+          >
+            <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75, fontWeight: 600 }}>
+                {t('materialSearch.settings.chooseColumns', 'בחירת עמודות')}
+              </Typography>
+              <FieldCheckList
+                items={outputItems}
+                checkedSet={outputChecked}
+                onToggle={handleOutputToggle}
+                height={ORDER_LIST_HEIGHT}
+              />
+            </Box>
+            <Box
+              sx={{
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+                maxHeight: ORDER_LIST_HEIGHT + 36,
+              }}
+            >
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75, fontWeight: 600 }}>
+                {t('materialSearch.settings.columnOrder', 'סדר עמודות')}
+              </Typography>
+              <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 0.75 }}>
+                {t('materialSearch.settings.dragHint', 'גרור לשינוי סדר · או השתמש בחצים')}
+              </Typography>
+              <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+                {orderedOutputKeys.length === 0 ? (
+                  <Typography variant="body2" color="text.disabled" sx={{ py: 4, textAlign: 'center' }}>
+                    —
+                  </Typography>
+                ) : (
+                  orderedOutputKeys.map((key, index) => {
+                    const locked = matnrOutputKey != null && key === matnrOutputKey;
+                    const label = labelByOutputKey.get(key) ?? key;
+                    const canUp = !locked && index > 1;
+                    const canDown = !locked && index < orderedOutputKeys.length - 1 && index >= 1;
+                    const isDragOver = dragOverKey === key && !locked;
+                    return (
+                      <Box
+                        key={key}
+                        draggable={!locked}
+                        onDragStart={(e) => {
+                          if (locked) {
+                            e.preventDefault();
+                            return;
+                          }
+                          dragKeyRef.current = key;
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', key);
+                          e.currentTarget.style.opacity = '0.5';
+                        }}
+                        onDragEnd={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                          dragKeyRef.current = null;
+                          setDragOverKey(null);
+                        }}
+                        onDragOver={(e) => {
+                          if (locked) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                          if (dragOverKey !== key) setDragOverKey(key);
+                        }}
+                        onDragLeave={() => {
+                          if (dragOverKey === key) setDragOverKey(null);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const from =
+                            dragKeyRef.current || e.dataTransfer.getData('text/plain');
+                          setDragOverKey(null);
+                          dragKeyRef.current = null;
+                          if (from) reorderOutputKey(from, key);
+                        }}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          py: 0.35,
+                          px: 0.5,
+                          borderRadius: 1,
+                          border: '1px solid',
+                          borderColor: isDragOver ? 'primary.main' : 'transparent',
+                          bgcolor: locked
+                            ? 'action.hover'
+                            : isDragOver
+                              ? 'action.selected'
+                              : 'transparent',
+                          cursor: locked ? 'default' : 'grab',
+                          '&:active': { cursor: locked ? 'default' : 'grabbing' },
+                          '&:hover': { bgcolor: locked ? 'action.hover' : 'action.hover' },
+                          transition: 'border-color 0.12s ease, background-color 0.12s ease',
+                        }}
+                      >
+                        {locked ? (
+                          <PushPin sx={{ fontSize: 16, color: 'primary.main', flexShrink: 0 }} />
+                        ) : (
+                          <DragIndicator
+                            sx={{ fontSize: 18, color: 'text.disabled', flexShrink: 0 }}
+                            aria-hidden
+                          />
+                        )}
+                        <Typography
+                          variant="caption"
+                          color="text.disabled"
+                          sx={{ width: 20, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          {index + 1}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            flex: 1,
+                            minWidth: 0,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            fontWeight: locked ? 600 : 400,
+                            fontSize: '0.875rem',
+                            pointerEvents: 'none',
+                          }}
+                          title={label}
+                        >
+                          {label}
+                          {locked ? ' *' : ''}
+                        </Typography>
+                        <Tooltip title={t('materialSearch.settings.moveUp', 'הזז למעלה')}>
+                          <span>
+                            <IconButton
+                              size="small"
+                              disabled={!canUp}
+                              onClick={() => moveOutputKey(key, -1)}
+                              aria-label="move up"
+                            >
+                              <KeyboardArrowUp fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title={t('materialSearch.settings.moveDown', 'הזז למטה')}>
+                          <span>
+                            <IconButton
+                              size="small"
+                              disabled={!canDown}
+                              onClick={() => moveOutputKey(key, 1)}
+                              aria-label="move down"
+                            >
+                              <KeyboardArrowDown fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </Box>
+                    );
+                  })
+                )}
+              </Box>
+            </Box>
+          </Box>
+        ) : (
+          <Box sx={{ px: 2, pb: 2, height: LIST_HEIGHT, scrollbarGutter: 'stable' }}>
+            {tabValue === 0 && (
+              <FieldCheckList items={searchItems} checkedSet={searchChecked} onToggle={handleSearchToggle} />
+            )}
+            {tabValue === 2 && (
+              <FieldCheckList items={outputItems} checkedSet={compareChecked} onToggle={handleCompareToggle} />
+            )}
+          </Box>
+        )}
       </DialogContent>
 
       <DialogActions sx={{ justifyContent: 'space-between', p: 2, flexWrap: 'wrap', gap: 1 }}>

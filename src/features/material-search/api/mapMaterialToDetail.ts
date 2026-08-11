@@ -1,12 +1,7 @@
 import type { Material, MaterialDetail, CodeWithHeDesc, BranchRef } from '../types/material';
+import { DEFAULT_WERKS_LABELS } from '../types/material';
 
-const PLANT_NAMES: Record<string, string> = {
-  '1000': 'מפעל ראשי',
-  '2000': 'מפעל צפון',
-  '3000': 'מפעל דרום',
-  '4000': 'מפעל מערב',
-  '5000': 'מפעל מזרח',
-};
+const PLANT_NAMES: Record<string, string> = DEFAULT_WERKS_LABELS;
 
 /** ZZ material type (numeric code + Hebrew) — mock map from list MTART. */
 const ZZ_TYPE: Record<string, CodeWithHeDesc> = {
@@ -49,11 +44,15 @@ function matnrHash(matnr: string): number {
 
 /**
  * Map list-row Material → GET /api/materials/:id wire shape (mock only).
+ * Optional werks prefers that plant as managing_branch when present on the row.
  */
-export function mapMaterialToDetail(m: Material): MaterialDetail {
+export function mapMaterialToDetail(m: Material, werks?: string): MaterialDetail {
   const plants = m.WERKS?.length ? m.WERKS : m.WERKS_DISP ? [m.WERKS_DISP] : [];
   const using_branches = plants.map(branchRef);
-  const managing_branch = using_branches[0] ?? null;
+  const preferred = werks
+    ? using_branches.find((b) => b.werks === werks) ?? branchRef(werks)
+    : null;
+  const managing_branch = preferred ?? using_branches[0] ?? null;
 
   const mtart = String(m.MTART ?? '');
   const zzmaterial_type = ZZ_TYPE[mtart] ?? {
@@ -73,9 +72,7 @@ export function mapMaterialToDetail(m: Material): MaterialDetail {
     description_he: MATKL_HE[matklCode] ?? (matklCode ? `קבוצה ${matklCode}` : '—'),
   };
 
-  const global_status: CodeWithHeDesc = m.LVORM
-    ? { code: 'Z9', description_he: 'מסומן למחיקה' }
-    : { code: 'Z1', description_he: 'פעיל' };
+  const global_status: CodeWithHeDesc = { code: 'Z1', description_he: 'פעיל' };
 
   // ~1 in 5 materials "in" a change request
   const change_request =

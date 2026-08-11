@@ -4,6 +4,7 @@ import {
   SearchFieldDefinition,
   SearchFilterClause,
 } from '../types/material';
+import { REQUEST_DEFAULT_TOP } from '../utils/paging';
 
 const PAGING_KEYS = new Set(['$skip', '$top', 'skip', 'top']);
 
@@ -71,7 +72,7 @@ function resolveOperator(
 export function buildSearchRequest(
   criteria: SearchCriteria,
   inputFields: SearchFieldDefinition[],
-  defaultTop = 200,
+  defaultTop = REQUEST_DEFAULT_TOP,
 ): MaterialSearchRequest {
   const byName = new Map(
     inputFields.map((f) => [(f.fieldName ?? '').toUpperCase(), f]),
@@ -83,8 +84,6 @@ export function buildSearchRequest(
   for (const [key, value] of Object.entries(raw)) {
     if (PAGING_KEYS.has(key) || isLogicKey(key)) continue;
     if (isEmptyValue(value)) continue;
-    // Default UI state LVORM=false — do not send unless user opts in (true)
-    if (key.toUpperCase() === 'LVORM' && value === false) continue;
 
     const field = byName.get(key.toUpperCase());
     const table_name = field?.tableName ?? '';

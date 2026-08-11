@@ -1,4 +1,5 @@
 import type { Material, MaterialType, IndustrySector, BaseUnitOfMeasure } from '../types/material';
+import { DEFAULT_WERKS_LABELS } from '../types/material';
 
 // Deterministic Pseudo-Random Generator (LCG)
 class LCG {
@@ -49,11 +50,20 @@ const USERS = ['MOSHE_COHEN', 'DAVID_LEVI', 'SARAH_NOY', 'ALON_RAZ', 'SYSTEM', '
 const INDUSTRY_SECTORS: IndustrySector[] = ['M', 'C', 'P', 'E'];
 const MATERIAL_TYPES: MaterialType[] = ['ROH', 'HALB', 'FERT', 'HAWA'];
 const BASE_UNITS: BaseUnitOfMeasure[] = ['PC', 'KG', 'L', 'M', 'M2', 'M3'];
-const PLANTS = ['1000', '2000', '3000', '4000', '5000'];
+const PLANTS = ['1000', '2000', '3000', '4000'];
 const MAT_GROUPS = ['001', '002', '010', '100', '200', 'RAW01', 'FIN02', 'HALB3'];
 const DIVISIONS = ['00', '01', '10', '20'];
 const WEIGHT_UNITS = ['KG', 'G', 'TO'];
 const VOLUME_UNITS = ['M3', 'L', 'CCM'];
+const DIM_UNITS = ['MM', 'CM', 'M'];
+const LAB_OFFICES = ['001', '002', 'QA1', 'R&D'];
+const EXT_GROUPS = ['EXT-A', 'EXT-B', 'EXT-C', 'OEM01', 'OEM02'];
+const BASIC_MATERIALS = ['STEEL', 'ALUM', 'BRASS', 'PVC', 'RUBBER', 'GLASS', 'COPPER'];
+const TEMP_CONDS = ['01', '02', '05', '10'];
+const STORAGE_CONDS = ['01', '03', '07', 'Y1'];
+const CONTAINER_REQS = ['01', '02', 'B1', 'C2'];
+const STORAGE_LOCS = ['0001', '0002', 'RAW1', 'FIN1', 'QA01'];
+const PRIORITIES = ['1', '2', '3'];
 
 export function generateMockMaterials(count: number = 4000): Material[] {
   const lcg = new LCG(123456); // Use a fixed seed for deterministic outputs
@@ -108,9 +118,6 @@ export function generateMockMaterials(count: number = 4000): Material[] {
       aenam = lcg.pick(USERS);
     }
 
-    // Deletion flag (around 3% of materials are deleted)
-    const lvorm = lcg.boolean(0.03);
-
     // Assign 1 to 3 random plants
     const werksCount = lcg.nextRange(1, 3);
     const werks: string[] = [];
@@ -124,6 +131,12 @@ export function generateMockMaterials(count: number = 4000): Material[] {
     const brgew = (lcg.next() * 500 + 0.1).toFixed(3);
     const ntgew = (Number(brgew) * (0.7 + lcg.next() * 0.25)).toFixed(3);
     const volum = (lcg.next() * 20).toFixed(3);
+    const laeng = (lcg.next() * 2000 + 1).toFixed(1);
+    const breit = (lcg.next() * 800 + 1).toFixed(1);
+    const hoehe = (lcg.next() * 500 + 1).toFixed(1);
+    // Deterministic 13-digit EAN-like code from matnr + index
+    const eanBase = `${matnr}${String(i).padStart(5, '0')}`.replace(/\D/g, '').slice(0, 12);
+    const ean11 = eanBase.padStart(12, '0') + String(lcg.nextRange(0, 9));
 
     materials.push({
       MATNR: matnr,
@@ -132,13 +145,11 @@ export function generateMockMaterials(count: number = 4000): Material[] {
       MTART: mtart,
       MBRSH: mbrsh,
       MEINS: meins,
-      LVORM: lvorm,
       ERSDA: ersda,
       ERNAM: ernam,
       LAEDA: laeda,
       AENAM: aenam,
       WERKS: werks,
-      // Extra columns for wide-grid / pin-scroll testing
       MATKL: lcg.pick(MAT_GROUPS),
       SPART: lcg.pick(DIVISIONS),
       BSTME: lcg.boolean(0.4) ? lcg.pick(BASE_UNITS) : meins,
@@ -147,7 +158,25 @@ export function generateMockMaterials(count: number = 4000): Material[] {
       GEWEI: lcg.pick(WEIGHT_UNITS),
       VOLUM: volum,
       VOLEH: lcg.pick(VOLUME_UNITS),
-      WERKS_DISP: werks.join(', '),
+      WERKS_DISP: werks
+        .map((w) => (DEFAULT_WERKS_LABELS[w] ? `${w} · ${DEFAULT_WERKS_LABELS[w]}` : w))
+        .join(', '),
+      EAN11: ean11,
+      WRKST: lcg.pick(BASIC_MATERIALS),
+      EXTWG: lcg.pick(EXT_GROUPS),
+      LABOR: lcg.pick(LAB_OFFICES),
+      XCHPF: lcg.boolean(0.35),
+      LAENG: laeng,
+      BREIT: breit,
+      HOEHE: hoehe,
+      MEABM: lcg.pick(DIM_UNITS),
+      MHDRZ: String(lcg.nextRange(0, 90)),
+      MHDHB: String(lcg.nextRange(30, 730)),
+      TEMPB: lcg.pick(TEMP_CONDS),
+      RAUBE: lcg.pick(STORAGE_CONDS),
+      BEHVO: lcg.pick(CONTAINER_REQS),
+      ZZSLOC: lcg.pick(STORAGE_LOCS),
+      ZZPRIO: lcg.pick(PRIORITIES),
     });
   }
 

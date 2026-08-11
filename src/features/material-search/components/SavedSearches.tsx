@@ -5,6 +5,7 @@ import {
   Select,
   MenuItem,
   FormControl,
+  InputLabel,
   IconButton,
   Dialog,
   DialogTitle,
@@ -29,6 +30,10 @@ import {
   type SavedSearch,
 } from '../state/search.state';
 import { SearchCriteria } from '../types/material';
+import {
+  shouldAutoApplyDefaultSavedSearch,
+  markDefaultSavedSearchApplied,
+} from '../utils/sessionDefaultSavedSearch';
 
 /** Payload applied to the criteria form (values + optional field visibility). */
 export type ApplySavedSearchPayload = {
@@ -36,6 +41,16 @@ export type ApplySavedSearchPayload = {
   /** undefined = leave current field visibility; null = all fields; string[] = those keys */
   searchFieldKeys?: string[] | null;
 };
+
+/** Stable compare — ignores key insertion order (JSON.stringify alone is flaky). */
+function criteriaFingerprint(c: SearchCriteria | undefined | null): string {
+  if (!c) return '';
+  try {
+    return JSON.stringify(c, Object.keys(c).sort());
+  } catch {
+    return '';
+  }
+}
 
 type Props = {
   compact?: boolean;
@@ -59,8 +74,22 @@ export function SavedSearches({
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newSearchName, setNewSearchName] = useState('');
-  const [selectedSearchId, setSelectedSearchId] = useState<string>('');
+  /** Highlight user default on first open (criteria pre-filled by SearchSidebar). */
+  const [selectedSearchId, setSelectedSearchId] = useState<string>(() => {
+    if (searchSubmitted || !defaultSearchId) return '';
+    return savedSearches.some((s) => s.id === defaultSearchId) ? defaultSearchId : '';
+  });
   const didApplyDefault = useRef(false);
+  /** Fingerprint of selected saved criteria — only clear select when draft diverges. */
+  const selectedCriteriaFp = useRef<string>(
+    (() => {
+      if (searchSubmitted || !defaultSearchId) return '';
+      const s = savedSearches.find((x) => x.id === defaultSearchId);
+      return s ? criteriaFingerprint(s.criteria) : '';
+    })(),
+  );
+
+  const defaultSearch = savedSearches.find((s) => s.id === defaultSearchId) ?? null;
 
   const applySavedSearch = useCallback(
     (search: SavedSearch) => {
@@ -72,39 +101,52 @@ export function SavedSearches({
           search.searchFieldKeys == null ? null : [...search.searchFieldKeys];
       }
       onApplySaved(payload);
+      selectedCriteriaFp.current = criteriaFingerprint(search.criteria);
       setSelectedSearchId(search.id);
     },
     [onApplySaved],
   );
 
-  // Each dashboard open: pre-fill user-marked default only (no built-in, no search)
+  // Auto-apply starred default only once per full page load (not when returning from results).
   useEffect(() => {
     if (didApplyDefault.current) return;
-    didApplyDefault.current = true;
-    if (searchSubmitted || !defaultSearchId) return;
-
+    if (searchSubmitted || !shouldAutoApplyDefaultSavedSearch()) {
+      didApplyDefault.current = true;
+      return;
+    }
+    if (!defaultSearchId) {
+      didApplyDefault.current = true;
+      markDefaultSavedSearchApplied();
+      return;
+    }
     const search = savedSearches.find((s) => s.id === defaultSearchId);
-    if (!search) return;
+    if (!search) {
+      didApplyDefault.current = true;
+      markDefaultSavedSearchApplied();
+      return;
+    }
+    didApplyDefault.current = true;
+    markDefaultSavedSearchApplied();
     applySavedSearch(search);
   }, [searchSubmitted, defaultSearchId, savedSearches, applySavedSearch]);
 
-  // Clear selection highlight when draft / fields diverge
+  // Keep Select on the default while draft still matches that saved criteria.
+  // (Field-visibility races used to clear selection even when values were correct.)
   useEffect(() => {
     if (!selectedSearchId || !currentCriteria) return;
     const active = savedSearches.find((s) => s.id === selectedSearchId);
-    if (!active || JSON.stringify(active.criteria) !== JSON.stringify(currentCriteria)) {
+    if (!active) {
       setSelectedSearchId('');
+      selectedCriteriaFp.current = '';
       return;
     }
-    if (Object.prototype.hasOwnProperty.call(active, 'searchFieldKeys')) {
-      if (
-        JSON.stringify(active.searchFieldKeys ?? null) !==
-        JSON.stringify(currentSearchFieldKeys ?? null)
-      ) {
-        setSelectedSearchId('');
-      }
+    const draftFp = criteriaFingerprint(currentCriteria);
+    const savedFp = criteriaFingerprint(active.criteria);
+    if (draftFp !== savedFp && draftFp !== selectedCriteriaFp.current) {
+      setSelectedSearchId('');
+      selectedCriteriaFp.current = '';
     }
-  }, [currentCriteria, selectedSearchId, savedSearches, currentSearchFieldKeys]);
+  }, [currentCriteria, selectedSearchId, savedSearches]);
 
   const handleSaveSearch = () => {
     if (!newSearchName.trim() || !currentCriteria) return;
@@ -139,8 +181,35 @@ export function SavedSearches({
 
   const handleSetDefault = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setDefaultSearchId(id);
+    // Toggle: same star again clears default
+    setDefaultSearchId((prev) => (prev === id ? '' : id));
   };
+
+  // Resolve which saved search is “active” for the current form criteria
+  const displaySelectedId = (() => {
+    const draftFp = criteriaFingerprint(currentCriteria);
+    if (selectedSearchId) {
+      const sel = savedSearches.find((s) => s.id === selectedSearchId);
+      if (sel) {
+        const selFp = criteriaFingerprint(sel.criteria);
+        if (!draftFp || draftFp === selFp || draftFp === selectedCriteriaFp.current) {
+          return selectedSearchId;
+        }
+      }
+    }
+    if (defaultSearch && draftFp && draftFp === criteriaFingerprint(defaultSearch.criteria)) {
+      return defaultSearch.id;
+    }
+    if (draftFp) {
+      const match = savedSearches.find((s) => criteriaFingerprint(s.criteria) === draftFp);
+      if (match) return match.id;
+    }
+    return '';
+  })();
+
+  const activeSavedSearch = displaySelectedId
+    ? savedSearches.find((s) => s.id === displaySelectedId) ?? null
+    : null;
 
   return (
     <Box sx={{ mb: compact ? 0 : 3, width: compact ? 'auto' : '100%' }}>
@@ -160,41 +229,80 @@ export function SavedSearches({
         }}
       >
         {savedSearches.length > 0 && (
-        <FormControl sx={{ minWidth: compact ? 200 : '100%', flex: 1 }} size="small">
+        <FormControl
+          sx={{ minWidth: compact ? 220 : '100%', flex: 1 }}
+          size="small"
+          variant="outlined"
+        >
+          {activeSavedSearch && (
+            <InputLabel
+              id="saved-search-active-label"
+              shrink
+              sx={{
+                fontWeight: 700,
+                color: 'primary.main',
+                '&.Mui-focused': { color: 'primary.main' },
+              }}
+            >
+              {t('materialSearch.savedSearches.currentLabel', 'חיפוש נוכחי')}
+            </InputLabel>
+          )}
           <Select
-            value={selectedSearchId}
+            labelId={activeSavedSearch ? 'saved-search-active-label' : undefined}
+            label={
+              activeSavedSearch
+                ? t('materialSearch.savedSearches.currentLabel', 'חיפוש נוכחי')
+                : undefined
+            }
+            value={displaySelectedId}
             onChange={(e) => handleApplySearch(String(e.target.value))}
             displayEmpty
+            notched={!!activeSavedSearch}
             sx={
               compact
                 ? {
-                    color: 'rgba(255,255,255,0.9)',
-                    bgcolor: 'rgba(255,255,255,0.1)',
-                    '& .MuiSelect-select': { color: 'rgba(255,255,255,0.9)' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.35)' },
+                    color: '#334155',
+                    bgcolor: '#fff',
+                    '& .MuiSelect-select': { color: '#334155', fontWeight: activeSavedSearch ? 600 : 400 },
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: displaySelectedId
+                        ? 'rgba(79,70,229,0.45)'
+                        : 'rgba(79,70,229,0.25)',
+                    },
                     '&:hover': {
-                      bgcolor: 'rgba(255,255,255,0.15)',
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.7)' },
+                      bgcolor: '#F8FAFC',
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(79,70,229,0.45)' },
                     },
                     '&.Mui-focused': {
-                      bgcolor: 'rgba(255,255,255,0.15)',
-                      boxShadow: '0 0 0 3px rgba(255,255,255,0.2)',
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.9)' },
+                      bgcolor: '#fff',
+                      boxShadow: '0 0 0 3px rgba(79,70,229,0.12)',
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4F46E5' },
                     },
-                    '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+                    '& .MuiSvgIcon-root': { color: '#64748B' },
                   }
-                : {}
+                : activeSavedSearch
+                  ? { '& .MuiSelect-select': { fontWeight: 600 } }
+                  : {}
             }
             renderValue={(selected) => {
               if (!selected) {
                 return (
-                  <span style={{ color: compact ? 'rgba(255,255,255,0.55)' : '#94A3B8' }}>
+                  <span style={{ color: '#94A3B8' }}>
                     {t('materialSearch.savedSearches.select')}
                   </span>
                 );
               }
               const search = savedSearches.find((s) => s.id === selected);
-              return search ? search.name : '';
+              if (!search) return '';
+              const isDef = defaultSearchId === search.id;
+              return (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                  {isDef && (
+                    <StarIcon sx={{ fontSize: '1rem', color: '#F59E0B', flexShrink: 0 }} />
+                  )}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{search.name}</span>
+                </Box>
+              );
             }}
           >
             <MenuItem value="" disabled>
@@ -257,11 +365,12 @@ export function SavedSearches({
             whiteSpace: 'nowrap',
             ...(compact
               ? {
-                  color: 'rgba(255,255,255,0.9)',
-                  borderColor: 'rgba(255,255,255,0.4)',
+                  color: '#4F46E5',
+                  borderColor: 'rgba(79,70,229,0.35)',
+                  bgcolor: '#fff',
                   '&:hover': {
-                    borderColor: 'rgba(255,255,255,0.8)',
-                    bgcolor: 'rgba(255,255,255,0.12)',
+                    borderColor: '#4F46E5',
+                    bgcolor: '#EEF2FF',
                     transform: 'none',
                     boxShadow: 'none',
                   },

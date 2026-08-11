@@ -4,15 +4,14 @@ import { materialServiceInstance } from '../api/materialService';
 import {
   SearchCriteria,
   SearchResult,
-  CompareFieldSelector,
   SearchFieldDefinition,
   OutputFieldDefinition,
   dedupeFieldsByName,
 } from '../types/material';
 import { logger } from '../../../utils/logger';
+import { SEARCH_PAGE_SIZE } from '../utils/paging';
 
-/** Default page size for infinite / paged searches (env override still wins). */
-const PAGE_SIZE = Number(import.meta.env.VITE_PAGE_SIZE) || 80;
+const PAGE_SIZE = SEARCH_PAGE_SIZE;
 
 /** Strip paging params so query keys stay stable across pages. */
 function serializeFilters(criteria: SearchCriteria): Omit<SearchCriteria, '$skip' | '$top'> {
@@ -81,6 +80,26 @@ export function useOutputFieldsQuery() {
 }
 
 /**
+ * Current user's plant/branch — runs once at app start.
+ * GET /api/user/branch → `{ werks: "XXXX" }`
+ */
+export function useUserBranchQuery() {
+  return useQuery({
+    queryKey: ['user', 'branch'],
+    queryFn: async () => {
+      try {
+        return await materialServiceInstance.getUserBranch();
+      } catch (error) {
+        logger.error('Error fetching user branch', error);
+        throw error;
+      }
+    },
+    staleTime: Infinity,
+    retry: 1,
+  });
+}
+
+/**
  * Paged / infinite-scroll variant of the material search.
  *
  * Uses OData-style $skip / $top supported by MockMaterialService (and the
@@ -89,17 +108,14 @@ export function useOutputFieldsQuery() {
  *   const items = data.pages.flatMap(p => p.materials)
  *
  * @param criteria  - Filter criteria (do NOT include $skip/$top — managed internally).
- * @param submitted - When true the query is enabled. False prevents firing
- *                    before the user has explicitly searched (real-API mode).
- *                    Mock mode ignores this flag and always runs.
- * @param pageSize  - Records per page (default: PAGE_SIZE = 80).
+ * @param submitted - When true the query is enabled (mock and real). False until Search.
+ * @param pageSize  - Records per page (default: SEARCH_PAGE_SIZE / VITE_PAGE_SIZE).
  */
 export function useMaterialSearchInfiniteQuery(
   criteria: SearchCriteria,
   submitted = false,
   pageSize: number = PAGE_SIZE,
 ) {
-  // Mock + real: only fetch after user clicks Search (no fire-on-type / fire-on-mount)
   const enabled = submitted;
 
   // Strip any stale paging params the caller might have included
@@ -133,20 +149,26 @@ export function useMaterialSearchInfiniteQuery(
 }
 
 /**
- * Fetches the full detail of a single material by its material number.
- * Corresponds to: GET /api/materials/:id
+ * Fetches full material detail by matnr + plant.
+ * Corresponds to: GET /api/materials/:id?werks=...
  *
  * - Returns `null` when the material is not found (HTTP 404).
  * - `isError` is set for any other API error (network failure, 5xx, etc.)
  * - Retries are disabled so errors surface immediately without delay.
  */
-export function useMaterialDetailsQuery(materialNumber: string | null) {
+export function useMaterialDetailsQuery(
+  materialNumber: string | null,
+  werks?: string | null,
+) {
   return useQuery({
-    queryKey: ['materials', 'detail', materialNumber],
+    queryKey: ['materials', 'detail', materialNumber, werks ?? ''],
     queryFn: async () => {
       try {
         if (!materialNumber) return null;
-        return await materialServiceInstance.getById(materialNumber);
+        return await materialServiceInstance.getById(
+          materialNumber,
+          werks || undefined,
+        );
       } catch (error) {
         logger.error('Error fetching material details query', error);
         throw error;
@@ -157,23 +179,3 @@ export function useMaterialDetailsQuery(materialNumber: string | null) {
   });
 }
 
-/**
- * Fetches specific fields for multiple materials for comparison.
- * Corresponds to: POST /api/materials/compare
- */
-export function useMaterialCompareQuery(materials: string[], fields: CompareFieldSelector[]) {
-  return useQuery({
-    queryKey: ['materials', 'compare', materials, fields],
-    queryFn: async () => {
-      try {
-        if (materials.length === 0 || fields.length === 0) return [];
-        return await materialServiceInstance.compare({ materials, fields });
-      } catch (error) {
-        logger.error('Error fetching material compare query', error);
-        throw error;
-      }
-    },
-    enabled: materials.length > 0 && fields.length > 0,
-    retry: false,
-  });
-}

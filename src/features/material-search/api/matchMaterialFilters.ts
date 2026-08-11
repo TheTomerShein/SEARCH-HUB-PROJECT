@@ -102,18 +102,8 @@ function matchFilterClause(m: Material, clause: SearchFilterClause): boolean {
   return values.includes(asString(raw));
 }
 
-/**
- * All clauses must match (AND of filters).
- * Default product rule: if no LVORM=true filter, hide deleted materials.
- */
+/** All clauses must match (AND of filters). */
 export function matchesMaterialFilters(m: Material, filters: SearchFilterClause[]): boolean {
-  const hasLvormShowDeleted = filters.some(
-    (f) =>
-      f.field_name.toUpperCase() === 'LVORM' &&
-      f.values.some((v) => v === 'true' || v === 'X' || v === '1'),
-  );
-  if (!hasLvormShowDeleted && m.LVORM) return false;
-
   for (const clause of filters) {
     if (!matchFilterClause(m, clause)) return false;
   }

@@ -9,9 +9,9 @@ type Props = {
 };
 
 export function MaterialResultFooter({
-  loadedCount,
-  totalCount,
-  checkedCount,
+  loadedCount = 0,
+  totalCount = 0,
+  checkedCount = 0,
   showCounts,
   onClearSelection,
 }: Props) {

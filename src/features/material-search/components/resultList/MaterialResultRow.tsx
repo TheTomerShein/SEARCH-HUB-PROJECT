@@ -6,6 +6,8 @@ import {
   OutputFieldDefinition,
   fieldKey,
   getResultRowId,
+  getRowFieldValue,
+  FALLBACK_MATNR_FIELD,
 } from '../../types/material';
 import { formatResultCell } from './formatResultCell';
 import { columnClassName } from '../../utils/columnLayout';
@@ -19,7 +21,8 @@ export type MaterialResultItemData = {
   focusedIndex: number;
   hoveredIndex: number;
   onHover: (index: number) => void;
-  onSelect: (matnr: string) => void;
+  /** Opens detail for this result row (getResultRowId: matnr or matnr+werks). */
+  onSelect: (rowId: string) => void;
   t: TFunction;
   /** Columns for this list only (pin: MATNR; scroll: rest). */
   columns: OutputFieldDefinition[];
@@ -100,13 +103,13 @@ function MaterialResultRowInner({ index, style, data }: ListChildComponentProps)
 
   if (mode === 'pin') {
     const matnrField = columns[0];
-    const val = matnrField ? rec[matnrField.fieldName] ?? matnr : matnr;
+    const val = matnrField ? (getRowFieldValue(rec, matnrField) ?? matnr) : matnr;
 
     return (
       <div
         style={style}
         className={`${baseClass} mdg-result-row--pin`}
-        onClick={() => onSelect(matnr)}
+        onClick={() => onSelect(rowId)}
         onMouseEnter={() => onHover(index)}
         onMouseLeave={() => onHover(-1)}
         role="row"
@@ -130,21 +133,7 @@ function MaterialResultRowInner({ index, style, data }: ListChildComponentProps)
           />
         </div>
         <div role="cell" className="mdg-result-cell mdg-col-matnr mdg-col-matnr--pinned">
-          {matnrField
-            ? formatResultCell(matnrField, val, t, { onCopyMatnr })
-            : formatResultCell(
-                {
-                  fieldName: 'MATNR',
-                  tableName: 'MARA',
-                  fieldType: 'CHAR',
-                  fieldLength: 40,
-                  hebrewDesc: '',
-                  mandt: '',
-                },
-                matnr,
-                t,
-                { onCopyMatnr },
-              )}
+          {formatResultCell(matnrField ?? FALLBACK_MATNR_FIELD, val, t, { onCopyMatnr })}
         </div>
       </div>
     );
@@ -154,14 +143,14 @@ function MaterialResultRowInner({ index, style, data }: ListChildComponentProps)
     <div
       style={style}
       className={`${baseClass} mdg-result-row--scroll`}
-      onClick={() => onSelect(matnr)}
+      onClick={() => onSelect(rowId)}
       onMouseEnter={() => onHover(index)}
       onMouseLeave={() => onHover(-1)}
       role="row"
       aria-selected={isChecked}
     >
       {columns.map((field: OutputFieldDefinition) => {
-        const val = rec[field.fieldName];
+        const val = getRowFieldValue(rec, field);
         return (
           <div key={fieldKey(field)} role="cell" className={columnClassName(field)}>
             {formatResultCell(field, val, t, { onCopyMatnr })}

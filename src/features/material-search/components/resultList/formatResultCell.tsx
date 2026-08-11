@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 import { OutputFieldDefinition } from '../../types/material';
-import { formatDate } from '../../../../utils/formatDate';
+import { formatFieldValueAsString } from '../../utils/formatFieldValue';
 
 export type FormatResultCellOptions = {
   /** MATNR chip only: copy number; must stop row click (detail dialog). */
@@ -9,7 +9,7 @@ export type FormatResultCellOptions = {
 
 /**
  * Format one results-table cell.
- * Hot path: plain strings / light DOM. React only for MATNR + status pill.
+ * Hot path: plain strings / light DOM. React only for MATNR chip.
  */
 export function formatResultCell(
   field: OutputFieldDefinition,
@@ -45,37 +45,5 @@ export function formatResultCell(
     );
   }
 
-  if (nameUpper === 'MTART') {
-    return String(t(`materialSearch.enums.materialType.${val}`, { defaultValue: String(val ?? '—') }));
-  }
-
-  if (nameUpper === 'MBRSH') {
-    return String(t(`materialSearch.enums.industrySector.${val}`, { defaultValue: String(val ?? '—') }));
-  }
-
-  if (nameUpper === 'LVORM') {
-    const deleted =
-      val === true || val === 'X' || val === 'x' || val === 'true' || val === 1 || val === '1';
-    const label = deleted
-      ? String(t('materialSearch.details.deleted'))
-      : String(t('materialSearch.details.active'));
-    return (
-      <span
-        className={
-          deleted ? 'mdg-status-pill mdg-status-pill--deleted' : 'mdg-status-pill mdg-status-pill--active'
-        }
-      >
-        <span className="mdg-status-dot" aria-hidden />
-        {label}
-      </span>
-    );
-  }
-
-  if (field.fieldType === 'DATS' || nameUpper === 'ERSDA' || nameUpper === 'LAEDA') {
-    return formatDate(val != null ? String(val) : undefined);
-  }
-
-  if (val == null || val === '') return '—';
-  if (Array.isArray(val)) return val.map(String).join(', ');
-  return String(val);
+  return formatFieldValueAsString(field, val, t);
 }

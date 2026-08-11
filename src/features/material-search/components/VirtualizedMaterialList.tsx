@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useSetRecoilState, useRecoilValue } from 'recoil';
 import {
   searchCriteriaState,
-  selectedMaterialNumberState,
+  selectedResultRowIdState,
   activeOutputFieldsState,
   searchSubmittedState,
   searchListMetaState,
@@ -69,7 +69,7 @@ export function VirtualizedMaterialList() {
     [matnrField],
   );
 
-  const setSelectedId = useSetRecoilState(selectedMaterialNumberState);
+  const setSelectedId = useSetRecoilState(selectedResultRowIdState);
   /** Shared list viewport height (both pin + scroll lists). */
   const [listViewportRef, listSize] = useElementSize();
   const [focusedIndex, setFocusedIndex] = useState(-1);
