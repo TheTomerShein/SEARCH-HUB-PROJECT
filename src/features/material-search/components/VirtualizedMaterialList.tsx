@@ -76,6 +76,9 @@ export function VirtualizedMaterialList() {
   const [hoveredIndex, setHoveredIndex] = useState(-1);
   const pinListRef = useRef<List>(null);
   const scrollListRef = useRef<List>(null);
+  /** Outer DOM of scroll FixedSizeList — measure vertical scrollbar for header align. */
+  const scrollListOuterRef = useRef<HTMLDivElement | null>(null);
+  const [scrollBarGutter, setScrollBarGutter] = useState(0);
   const syncingScroll = useRef(false);
   const { open: toastOpen, message: toastMessage, severity: toastSeverity, showToast, setOpen: setToastOpen } =
     useToast();
@@ -161,7 +164,7 @@ export function VirtualizedMaterialList() {
         });
       } else if (e.key === 'Enter' && focusedIndex >= 0 && focusedIndex < items.length) {
         e.preventDefault();
-        handleSelectId(items[focusedIndex].MATNR);
+        handleSelectId(rowIds[focusedIndex] || getResultRowId(items[focusedIndex]));
       } else if (e.key === ' ' && focusedIndex >= 0 && focusedIndex < items.length) {
         e.preventDefault();
         handleToggleCheck(rowIds[focusedIndex] || getResultRowId(items[focusedIndex]));
@@ -172,13 +175,21 @@ export function VirtualizedMaterialList() {
     [items, rowIds, focusedIndex, handleSelectId, handleToggleCheck, scrollBothTo],
   );
 
+  const measureScrollBarGutter = useCallback(() => {
+    const el = scrollListOuterRef.current;
+    if (!el) return;
+    const gutter = Math.max(0, el.offsetWidth - el.clientWidth);
+    setScrollBarGutter((prev) => (prev === gutter ? prev : gutter));
+  }, []);
+
   const handleItemsRendered = useCallback(
     ({ visibleStopIndex }: { visibleStopIndex: number }) => {
+      measureScrollBarGutter();
       if (hasNextPage && !isFetchingNextPage && visibleStopIndex >= items.length - 10) {
         fetchNextPage();
       }
     },
-    [hasNextPage, isFetchingNextPage, items.length, fetchNextPage],
+    [hasNextPage, isFetchingNextPage, items.length, fetchNextPage, measureScrollBarGutter],
   );
 
   const makeScrollHandler = useCallback(
@@ -262,6 +273,16 @@ export function VirtualizedMaterialList() {
   const scrollMinWidth = useMemo(() => estimateScrollMinWidthPx(bodyFields), [bodyFields]);
   const listHeight = listSize.height;
 
+  // Keep header columns aligned with body: body list loses width to the vertical scrollbar.
+  useEffect(() => {
+    const el = scrollListOuterRef.current;
+    if (!el) return;
+    measureScrollBarGutter();
+    const ro = new ResizeObserver(measureScrollBarGutter);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [listHeight, items.length, scrollMinWidth, measureScrollBarGutter]);
+
   if (isLoading && !data) return <MaterialListSkeleton />;
   if (isError) return <MaterialListError error={error} onRetry={() => refetch()} />;
 
@@ -269,6 +290,7 @@ export function VirtualizedMaterialList() {
     <Box
       role="table"
       className="mdg-results-shell"
+      aria-label={t('materialSearch.results.tableLabel', 'תוצאות חיפוש חומרים')}
       sx={{
         flex: 1,
         minHeight: 0,
@@ -278,7 +300,8 @@ export function VirtualizedMaterialList() {
         m: 0,
         borderRadius: 0,
         border: 'none',
-        borderTop: '1px solid #E2E8F0',
+        borderTop: '1px solid',
+        borderColor: 'divider',
       }}
     >
       {items.length === 0 ? (
@@ -347,6 +370,7 @@ export function VirtualizedMaterialList() {
 
           {/* Horizontally scrolling columns */}
           <Box
+            className="mdg-result-scroll-pane"
             sx={{
               flex: 1,
               minWidth: 0,
@@ -377,7 +401,11 @@ export function VirtualizedMaterialList() {
                   flexDirection: 'column',
                 }}
               >
-                <MaterialResultHeader mode="scroll" columns={bodyFields} />
+                <MaterialResultHeader
+                  mode="scroll"
+                  columns={bodyFields}
+                  scrollbarGutter={scrollBarGutter}
+                />
                 <Box
                   ref={listViewportRef}
                   sx={{
@@ -392,6 +420,7 @@ export function VirtualizedMaterialList() {
                   {listHeight > 0 && (
                     <List
                       ref={scrollListRef}
+                      outerRef={scrollListOuterRef}
                       height={listHeight}
                       itemCount={items.length}
                       itemSize={ROW_HEIGHT}
@@ -401,7 +430,9 @@ export function VirtualizedMaterialList() {
                       style={{
                         direction: 'rtl',
                         overflowX: 'hidden',
+                        overflowY: 'scroll',
                         background: '#fff',
+                        scrollbarGutter: 'stable',
                       }}
                       onItemsRendered={handleItemsRendered}
                       onScroll={makeScrollHandler('scroll')}

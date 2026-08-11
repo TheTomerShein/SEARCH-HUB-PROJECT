@@ -18,10 +18,44 @@ export interface SavedSearch {
 
 // --- Effects ---
 
+/** LS-backed default saved search, if any (used at first paint to beat stale URL). */
+function readDefaultSavedSearch(): SavedSearch | null {
+  try {
+    const rawId = window.localStorage.getItem('materialDefaultSavedSearchId');
+    if (rawId == null) return null;
+    const id = JSON.parse(rawId) as string;
+    if (!id) return null;
+    const rawList = window.localStorage.getItem('materialSavedSearches');
+    if (rawList == null) return null;
+    const list = JSON.parse(rawList) as SavedSearch[];
+    return list.find((s) => s.id === id) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Criteria ↔ URL. On full page load:
+ * - If user has a starred default saved search → seed atom with that criteria
+ *   and strip stale query params so F5 shows the default form, not last search.
+ * - Else hydrate from URL (shareable links / no default).
+ * Form draft starts from this atom; Select matches by fingerprint.
+ */
 const urlSyncEffect: AtomEffect<SearchCriteria> = ({ setSelf, onSet }) => {
   if (typeof window !== 'undefined') {
-    const fromUrl = criteriaFromSearchParams(new URLSearchParams(window.location.search));
-    if (fromUrl) setSelf(fromUrl);
+    const defaultSaved = readDefaultSavedSearch();
+    if (defaultSaved) {
+      setSelf({ ...defaultSaved.criteria });
+      // Keep URL clean of previous session filters (default is LS, not share link).
+      const clean = new URL(window.location.href);
+      applyCriteriaToUrl(clean, null);
+      if (clean.search !== window.location.search) {
+        window.history.replaceState({}, '', clean.toString());
+      }
+    } else {
+      const fromUrl = criteriaFromSearchParams(new URLSearchParams(window.location.search));
+      if (fromUrl) setSelf(fromUrl);
+    }
 
     onSet((newValue, _, isReset) => {
       const newUrl = new URL(window.location.href);
@@ -82,8 +116,9 @@ export const defaultSavedSearchIdState = atom<string>({
 
 /**
  * User has explicitly submitted a search this session.
- * Always false on full page load/refresh so we open the criteria screen
- * (URL may still pre-fill criteria via urlSyncEffect; user must press Search).
+ * Always false on full page load/refresh so we open the criteria screen.
+ * If a default saved search exists, URL criteria are stripped and the form
+ * is seeded from that default (see urlSyncEffect + SearchSidebar).
  */
 export const searchSubmittedState = atom<boolean>({
   key: 'searchSubmitted',
@@ -210,9 +245,10 @@ export const compareModeOpenState = atom<boolean>({
 });
 
 /**
- * Controls whether the search filter drawer is open on screens < lg.
+ * Criteria panel in results view (sidebar on lg+, drawer on smaller).
+ * true = visible; false = full-width results table.
  */
-export const filterDrawerOpenState = atom<boolean>({
-  key: 'filterDrawerOpen',
-  default: false,
+export const criteriaPanelOpenState = atom<boolean>({
+  key: 'criteriaPanelOpen',
+  default: true,
 });

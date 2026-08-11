@@ -1,5 +1,3 @@
-import { Box, Typography } from '@mui/material';
-
 type Props = {
   loadedCount: number;
   totalCount: number;
@@ -16,83 +14,32 @@ export function MaterialResultFooter({
   onClearSelection,
 }: Props) {
   return (
-    <Box
-      sx={{
-        px: 2.5,
-        py: 1.25,
-        borderTop: '1px solid #E2E8F0',
-        background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: 2,
-        flexWrap: 'wrap',
-        flexShrink: 0,
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+    <div className="mdg-result-footer" role="status" aria-live="polite">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         {showCounts && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box
-              sx={{
-                px: 1.25,
-                py: 0.25,
-                borderRadius: '20px',
-                bgcolor: 'rgba(79,70,229,0.08)',
-                border: '1px solid rgba(79,70,229,0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.5,
-              }}
-            >
-              <Typography
-                variant="caption"
-                sx={{ fontWeight: 700, color: 'primary.dark', fontSize: '0.75rem' }}
-              >
-                {loadedCount.toLocaleString('he-IL')}
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.7rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="mdg-result-footer-pill">
+              <span>{loadedCount.toLocaleString('he-IL')}</span>
+              <span style={{ fontWeight: 500, color: '#64748b', fontSize: '0.7rem' }}>
                 / {totalCount.toLocaleString('he-IL')}
-              </Typography>
-            </Box>
-            <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
-              רשומות
-            </Typography>
-          </Box>
+              </span>
+            </span>
+            <span className="mdg-result-footer-pill--muted">רשומות</span>
+          </div>
         )}
         {checkedCount > 0 && (
-          <Box
-            component={onClearSelection ? 'button' : 'div'}
-            type={onClearSelection ? 'button' : undefined}
+          <button
+            type="button"
+            className="mdg-result-footer-pill mdg-result-footer-pill--select"
             onClick={onClearSelection}
             title={onClearSelection ? 'נקה בחירה' : undefined}
-            sx={{
-              px: 1.25,
-              py: 0.25,
-              borderRadius: '20px',
-              bgcolor: 'rgba(79,70,229,0.12)',
-              border: '1px solid rgba(79,70,229,0.25)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5,
-              cursor: onClearSelection ? 'pointer' : 'default',
-              font: 'inherit',
-              m: 0,
-              '&:hover': onClearSelection
-                ? { bgcolor: 'rgba(79,70,229,0.2)', borderColor: 'rgba(79,70,229,0.4)' }
-                : undefined,
-            }}
+            disabled={!onClearSelection}
           >
-            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
-            <Typography
-              variant="caption"
-              sx={{ fontWeight: 700, color: 'primary.dark', fontSize: '0.75rem' }}
-            >
-              {checkedCount} נבחרו
-            </Typography>
-          </Box>
+            <span className="mdg-result-footer-dot" aria-hidden />
+            {checkedCount} נבחרו
+          </button>
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }

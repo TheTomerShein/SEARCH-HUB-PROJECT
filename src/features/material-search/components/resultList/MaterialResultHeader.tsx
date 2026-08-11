@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { Checkbox, Tooltip } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { OutputFieldDefinition, fieldKey } from '../../types/material';
@@ -11,6 +12,11 @@ type Props = {
   someChecked?: boolean;
   onSelectAll?: () => void;
   disabled?: boolean;
+  /**
+   * Vertical scrollbar width on the body list (px).
+   * Applied as padding on the scroll header so columns line up with values.
+   */
+  scrollbarGutter?: number;
 };
 
 export function MaterialResultHeader({
@@ -20,6 +26,7 @@ export function MaterialResultHeader({
   someChecked = false,
   onSelectAll,
   disabled,
+  scrollbarGutter = 0,
 }: Props) {
   const { t } = useTranslation();
 
@@ -40,7 +47,7 @@ export function MaterialResultHeader({
                 indeterminate={someChecked}
                 onChange={onSelectAll}
                 disabled={disabled}
-                sx={{ p: 0.75 }}
+                sx={{ p: 0.5, width: 28, height: 28 }}
                 inputProps={{ 'aria-label': 'Select all rows' }}
               />
             </span>
@@ -62,7 +69,12 @@ export function MaterialResultHeader({
     <div
       className="mdg-result-header mdg-result-header--scroll"
       role="rowgroup"
-      style={{ height: HEADER_HEIGHT }}
+      style={
+        {
+          height: HEADER_HEIGHT,
+          ['--mdg-v-scrollbar' as string]: `${Math.max(0, scrollbarGutter)}px`,
+        } as CSSProperties
+      }
     >
       {columns.map((field) => (
         <div key={fieldKey(field)} role="columnheader" className={headerClassName(field)}>

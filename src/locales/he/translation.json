@@ -9,6 +9,12 @@
     },
     "filters": {
       "title": "סינון מתקדם",
+      "hidePanel": "הסתר סינון — טבלה מלאה",
+      "showPanel": "הצג סינון",
+      "hidePanelShort": "הסתר סינון",
+      "showPanelShort": "הצג סינון",
+      "requiredField": "שדה חובה",
+      "requiredBeforeSearch": "יש למלא את שדות החובה לפני חיפוש",
       "materialNumber": "מספר חומר (MATNR)",
       "description": "תיאור חומר",
       "materialType": "סוג חומר (MTART)",
@@ -48,6 +54,7 @@
       "save": "שמור",
       "setDefault": "הגדר כברירת מחדל בפתיחה",
       "isDefault": "ברירת מחדל לפתיחת המסך",
+      "saveAsDefault": "הגדר כברירת מחדל בפתיחת המסך",
       "currentLabel": "חיפוש נוכחי"
     },
     "actions": {
@@ -71,6 +78,7 @@
       "openFailed": "פתיחת דוח שגויים נכשלה"
     },
     "results": {
+      "tableLabel": "תוצאות חיפוש חומרים",
       "count": "נמצאו {{count}} רשומות",
       "loadedCount": "נטענו {{loaded}} מתוך {{total}}",
       "empty": "לא נמצאו תוצאות התואמות את החיפוש",
@@ -131,7 +139,10 @@
       "deleted": "מסומן למחיקה",
       "createdBy": "נוצר על ידי",
       "changedBy": "שונה לאחרונה על ידי",
-      "changedOn": "תאריך שינוי"
+      "changedOn": "תאריך שינוי",
+      "openInMdg": "פתח ב-SAP MDG",
+      "openInMdgFailed": "לא ניתן לפתוח את החומר ב-SAP MDG",
+      "openingMdg": "פותח…"
     },
     "enums": {
       "materialType": {

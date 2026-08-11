@@ -38,6 +38,10 @@ import {
   DEFAULT_OUTPUT_FIELD_NAMES,
   DEFAULT_COMPARE_FIELD_NAMES,
 } from '../fieldDefaults';
+import {
+  ensureRequiredCriteriaKeys,
+  requiredCriteriaFieldKeys,
+} from '../requiredCriteriaFields';
 
 interface FieldSettingsDialogProps {
   open: boolean;
@@ -186,6 +190,13 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
     [outputFields],
   );
 
+  /** Locked criteria fields (WERKS etc.) — cannot be unchecked in settings. */
+  const lockedSearchKeys = useMemo(
+    () => (searchFields ? requiredCriteriaFieldKeys(searchFields) : []),
+    [searchFields],
+  );
+  const lockedSearchKeySet = useMemo(() => new Set(lockedSearchKeys), [lockedSearchKeys]);
+
   // Seed draft + context tab when dialog opens (once per open cycle)
   useEffect(() => {
     if (!open) {
@@ -197,7 +208,9 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
     if (!searchFields || !outputFields) return;
 
     setTabValue(initialTab);
-    setDraftSearch(activeSearchFields ?? allSearchKeys);
+    setDraftSearch(
+      ensureRequiredCriteriaKeys(activeSearchFields ?? allSearchKeys, searchFields),
+    );
     setDraftOutput(ensureMatnrInOutputKeys(activeOutputFields ?? allOutputKeys, outputFields));
     setDraftCompare(activeCompareFields ?? allOutputKeys);
     seededRef.current = true;
@@ -222,8 +235,11 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
   }, []);
 
   const handleSearchToggle = useCallback(
-    (key: string) => toggleIn(setDraftSearch, key),
-    [toggleIn],
+    (key: string) => {
+      if (lockedSearchKeySet.has(key)) return; // required criteria (e.g. WERKS)
+      toggleIn(setDraftSearch, key);
+    },
+    [toggleIn, lockedSearchKeySet],
   );
   const handleOutputToggle = useCallback(
     (key: string) => {
@@ -297,16 +313,21 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
     [matnrOutputKey, outputFields],
   );
 
-  /** Clear all selections on the active tab (draft only). Output tab keeps MATNR. */
+  /** Clear all selections on the active tab (draft only). Keeps locked required fields. */
   const handleClearSelection = () => {
-    if (tabValue === 0) setDraftSearch([]);
+    if (tabValue === 0) setDraftSearch([...lockedSearchKeys]);
     else if (tabValue === 1) setDraftOutput(matnrOutputKey ? [matnrOutputKey] : []);
     else setDraftCompare([]);
   };
 
   const handleReset = () => {
     if (searchFields) {
-      setDraftSearch(resolveFieldKeys(searchFields, DEFAULT_CRITERIA_FIELD_NAMES));
+      setDraftSearch(
+        ensureRequiredCriteriaKeys(
+          resolveFieldKeys(searchFields, DEFAULT_CRITERIA_FIELD_NAMES),
+          searchFields,
+        ),
+      );
     }
     if (outputFields) {
       setDraftOutput(ensureMatnrInOutputKeys(
@@ -318,7 +339,10 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
   };
 
   const handleApply = () => {
-    setActiveSearchFields(draftSearch);
+    const searchToSave = searchFields
+      ? ensureRequiredCriteriaKeys(draftSearch, searchFields)
+      : draftSearch;
+    setActiveSearchFields(searchToSave);
     // Always persist ordered keys — order drives results table + Excel export
     const outputToSave = outputFields
       ? ensureMatnrInOutputKeys(draftOutput, outputFields)
@@ -346,9 +370,16 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
   const searchItems = useMemo<FieldItem[]>(() => {
     if (!searchFields) return [];
     return searchFields
-      .map((f) => ({ key: fieldKey(f), label: t(f.hebrewDesc) }))
+      .map((f) => {
+        const key = fieldKey(f);
+        return {
+          key,
+          label: t(f.hebrewDesc),
+          locked: lockedSearchKeySet.has(key),
+        };
+      })
       .filter((item) => !q || item.label.toLowerCase().includes(q));
-  }, [searchFields, t, q]);
+  }, [searchFields, t, q, lockedSearchKeySet]);
 
   const outputItems = useMemo<FieldItem[]>(() => {
     if (!outputFields) return [];
@@ -364,10 +395,10 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
       .filter((item) => !q || item.label.toLowerCase().includes(q));
   }, [outputFields, t, q, matnrOutputKey]);
 
-  // Output tab: only MATNR left still counts as "cleared" for button disable
+  // Clear button: ignore locked required fields (criteria WERKS, output MATNR)
   const currentDraftCount =
     tabValue === 0
-      ? draftSearch.length
+      ? draftSearch.filter((k) => !lockedSearchKeySet.has(k)).length
       : tabValue === 1
         ? draftOutput.filter((k) => k !== matnrOutputKey).length
         : draftCompare.length;

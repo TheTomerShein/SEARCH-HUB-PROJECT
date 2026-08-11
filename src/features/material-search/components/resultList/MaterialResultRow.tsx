@@ -68,9 +68,10 @@ function rowStateClass(
   isEven: boolean,
 ): string {
   let className = 'mdg-result-row';
+  // Additive states (CSS cascade: checked > focused > hover > zebra)
+  if (isEven && !isChecked && !isFocused) className += ' mdg-result-row--even';
   if (isChecked) className += ' mdg-result-row--checked';
-  else if (isFocused) className += ' mdg-result-row--focused';
-  else if (isEven) className += ' mdg-result-row--even';
+  if (isFocused) className += ' mdg-result-row--focused';
   if (isHovered) className += ' mdg-result-row--hovered';
   return className;
 }

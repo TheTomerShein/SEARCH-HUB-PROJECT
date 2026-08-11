@@ -181,11 +181,14 @@ export function SherlokBrand({
         {subtitle ? (
           <Typography
             sx={{
-              mt: 0.75,
+              mt: size === 'md' ? 0.5 : 0.75,
               color: subColor,
               fontWeight: 400,
-              fontSize: { xs: '0.9rem', sm: '1rem' },
-              lineHeight: 1.45,
+              fontSize:
+                size === 'md'
+                  ? { xs: '0.8rem', sm: '0.88rem' }
+                  : { xs: '0.9rem', sm: '1rem' },
+              lineHeight: 1.4,
               maxWidth: 420,
               fontFamily: '"Heebo", "Segoe UI", system-ui, sans-serif',
             }}

@@ -1,15 +1,18 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Box, Typography, CircularProgress, Divider } from '@mui/material';
+import { Box, Typography, CircularProgress, Divider, IconButton, Tooltip } from '@mui/material';
+import { ChevronRight } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
-import { useRecoilState, useRecoilValue } from 'recoil';
+import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil';
 import {
   searchCriteriaState,
   activeSearchFieldsState,
   searchSubmittedState,
   savedSearchesState,
   defaultSavedSearchIdState,
+  criteriaPanelOpenState,
+  type SavedSearch,
 } from '../state/search.state';
-import { useSearchFieldsQuery, useUserBranchQuery } from '../hooks/useMaterialSearch';
+import { useSearchFieldsQuery } from '../hooks/useMaterialSearch';
 import { useIsFetching } from '@tanstack/react-query';
 import { MaterialSearchFilters } from './MaterialSearchFilters';
 import { defaultCriteria } from '../defaultCriteria';
@@ -17,25 +20,12 @@ import { SavedSearches, type ApplySavedSearchPayload } from './SavedSearches';
 import { SearchCriteria, fieldKey } from '../types/material';
 import { useClearSearch } from '../hooks/useClearSearch';
 import { SherlokBrand } from '../../../components/SherlokBrand';
+import { isDefaultAutoSeedSuppressed } from '../utils/sessionDefaultSavedSearch';
+import { criteriaFingerprint } from '../utils/criteriaFingerprint';
 import {
-  shouldAutoApplyDefaultSavedSearch,
-  markDefaultSavedSearchApplied,
-} from '../utils/sessionDefaultSavedSearch';
-
-function criteriaFingerprint(c: SearchCriteria): string {
-  try {
-    return JSON.stringify(c, Object.keys(c).sort());
-  } catch {
-    return '';
-  }
-}
-
-function werksListFromCriteria(c: SearchCriteria): string[] {
-  const w = c.WERKS as unknown;
-  if (Array.isArray(w)) return w.map(String).map((s) => s.trim()).filter(Boolean);
-  if (typeof w === 'string' && w.trim()) return [w.trim()];
-  return [];
-}
+  criteriaHasAllRequired,
+  ensureRequiredCriteriaFieldsVisible,
+} from '../requiredCriteriaFields';
 
 /**
  * Resolve visible criteria fields from config + active keys.
@@ -56,7 +46,6 @@ function resolveVisibleSearchFields<T extends { tableName: string; fieldName: st
     const f =
       byKey.get(raw) ??
       byName.get(raw.toUpperCase()) ??
-      // last segment of "TABLE-FIELD" style keys
       byName.get(raw.includes('-') ? raw.slice(raw.lastIndexOf('-') + 1).toUpperCase() : '');
     if (!f) continue;
     const k = fieldKey(f);
@@ -67,6 +56,15 @@ function resolveVisibleSearchFields<T extends { tableName: string; fieldName: st
   return out;
 }
 
+function resolveDefaultSavedSearch(
+  defaultSearchId: string,
+  savedSearches: SavedSearch[],
+  searchSubmitted: boolean,
+): SavedSearch | null {
+  if (searchSubmitted || !defaultSearchId || isDefaultAutoSeedSuppressed()) return null;
+  return savedSearches.find((s) => s.id === defaultSearchId) ?? null;
+}
+
 export function SearchSidebar({ centered = false }: { centered?: boolean }) {
   const { t } = useTranslation();
   const [appliedCriteria, setAppliedCriteria] = useRecoilState(searchCriteriaState);
@@ -74,87 +72,48 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
   const [searchSubmitted, setSearchSubmitted] = useRecoilState(searchSubmittedState);
   const savedSearches = useRecoilValue(savedSearchesState);
   const defaultSearchId = useRecoilValue(defaultSavedSearchIdState);
+  const setCriteriaPanelOpen = useSetRecoilState(criteriaPanelOpenState);
   const clearSearch = useClearSearch();
 
-  /**
-   * Starred default — only for first paint of this page load.
-   * Returning from results remounts this component; do not re-seed default then.
-   */
-  const userDefaultSearch = useMemo(() => {
-    if (searchSubmitted || !defaultSearchId) return null;
-    if (!shouldAutoApplyDefaultSavedSearch()) return null;
-    return savedSearches.find((s) => s.id === defaultSearchId) ?? null;
-  }, [searchSubmitted, defaultSearchId, savedSearches]);
+  const defaultToSeed = resolveDefaultSavedSearch(defaultSearchId, savedSearches, searchSubmitted);
 
-  const [draftCriteria, setDraftCriteria] = useState<SearchCriteria>(() => {
-    if (userDefaultSearch) {
-      markDefaultSavedSearchApplied();
-      return { ...userDefaultSearch.criteria };
-    }
-    // Returning from results: keep last applied criteria (not empty + default)
-    return { ...appliedCriteria };
-  });
+  // Atom already holds default criteria on load (urlSyncEffect). Draft mirrors it.
+  const [draftCriteria, setDraftCriteria] = useState<SearchCriteria>(() => ({
+    ...(defaultToSeed ? defaultToSeed.criteria : appliedCriteria),
+  }));
   /** Bumps when a saved search is applied → remount filter form with new values/fields. */
   const [formEpoch, setFormEpoch] = useState(0);
-  const didApplyUserDefaultFields = useRef(false);
-  /** Skip first applied→draft sync so user default seed is not wiped by atom default. */
-  const skipAppliedSyncOnce = useRef(!!userDefaultSearch);
+  const didApplyDefaultFields = useRef(false);
 
-  // Once the user has searched (or landed with results), never auto-apply default again.
+  // Keep draft in sync with applied atom (clear, search submit, URL, default seed).
   useEffect(() => {
-    if (searchSubmitted) markDefaultSavedSearchApplied();
-  }, [searchSubmitted]);
-
-  useEffect(() => {
-    if (skipAppliedSyncOnce.current) {
-      skipAppliedSyncOnce.current = false;
-      return;
-    }
     setDraftCriteria(appliedCriteria);
   }, [appliedCriteria]);
 
-  // Field visibility from default saved search — only when we actually seeded it this load.
+  // Field visibility from default saved search on open (once per mount when seeding).
   useEffect(() => {
-    if (didApplyUserDefaultFields.current) return;
-    didApplyUserDefaultFields.current = true;
-    if (!userDefaultSearch) return;
-    if (!Object.prototype.hasOwnProperty.call(userDefaultSearch, 'searchFieldKeys')) return;
+    if (didApplyDefaultFields.current) return;
+    if (!defaultToSeed) return;
+    didApplyDefaultFields.current = true;
+    if (!Object.prototype.hasOwnProperty.call(defaultToSeed, 'searchFieldKeys')) return;
     setActiveSearchFields(
-      userDefaultSearch.searchFieldKeys == null
-        ? null
-        : [...userDefaultSearch.searchFieldKeys],
+      defaultToSeed.searchFieldKeys == null ? null : [...defaultToSeed.searchFieldKeys],
     );
-  }, [userDefaultSearch, setActiveSearchFields]);
-
-  // Pre-fill WERKS from GET /api/user/branch when form has no plant yet
-  // (does not override URL criteria or a saved search that already sets WERKS).
-  const { data: userBranch } = useUserBranchQuery();
-  useEffect(() => {
-    const werks = userBranch?.werks?.trim();
-    if (!werks) return;
-    if (werksListFromCriteria(draftCriteria).length > 0) return;
-    if (werksListFromCriteria(appliedCriteria).length > 0) return;
-
-    setDraftCriteria((prev) => {
-      if (werksListFromCriteria(prev).length > 0) return prev;
-      return { ...prev, WERKS: [werks] };
-    });
-    setFormEpoch((n) => n + 1);
-  }, [userBranch, draftCriteria, appliedCriteria]);
+  }, [defaultToSeed, setActiveSearchFields]);
 
   const isDirty =
     searchSubmitted &&
     criteriaFingerprint(draftCriteria) !== criteriaFingerprint(appliedCriteria);
 
-  // First page (or new criteria key) with no cached data yet — mock delay or real API
+  // Avoid isFetching observers on hero (centered) — they re-render all filters for no reason
   const isFetchingCount = useIsFetching({
     queryKey: ['materials', 'search', 'infinite'],
-    predicate: (q) => q.state.data === undefined && q.state.fetchStatus === 'fetching',
+    predicate: (q) =>
+      searchSubmitted && q.state.data === undefined && q.state.fetchStatus === 'fetching',
   });
-  // Any in-flight search (incl. background refetch of current criteria)
   const isFetchingAny = useIsFetching({
     queryKey: ['materials', 'search', 'infinite'],
-    predicate: (q) => q.state.fetchStatus === 'fetching',
+    predicate: (q) => searchSubmitted && q.state.fetchStatus === 'fetching',
   });
   const isSearchBusy =
     searchSubmitted && (isFetchingCount > 0 || (isFetchingAny > 0 && isDirty));
@@ -162,37 +121,40 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
 
   const visibleFields = useMemo(() => {
     if (!searchFields) return undefined;
-    return resolveVisibleSearchFields(searchFields, activeSearchFields);
+    const resolved = resolveVisibleSearchFields(searchFields, activeSearchFields);
+    // Required fields (e.g. WERKS) always stay visible even if hidden in settings
+    return ensureRequiredCriteriaFieldsVisible(searchFields, resolved);
   }, [searchFields, activeSearchFields]);
+
+  const handleCriteriaChange = useCallback((next: SearchCriteria) => {
+    setDraftCriteria(next);
+  }, []);
 
   const handleApplySaved = useCallback(
     (payload: ApplySavedSearchPayload) => {
-      // 1) Values first (new object so React always sees a change)
       setDraftCriteria({ ...payload.criteria });
-
-      // 2) Field visibility (when saved snapshot included it)
       if (payload.searchFieldKeys !== undefined) {
         setActiveSearchFields(
           payload.searchFieldKeys == null ? null : [...payload.searchFieldKeys],
         );
       }
-
-      // 3) Force MaterialSearchFilters remount so every input re-binds
       setFormEpoch((n) => n + 1);
     },
     [setActiveSearchFields],
   );
 
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
+    // Frontend-only required fields (see requiredCriteriaFields.ts)
+    if (!criteriaHasAllRequired(draftCriteria)) return;
     setAppliedCriteria(draftCriteria);
     setSearchSubmitted(true);
-  };
+  }, [draftCriteria, setAppliedCriteria, setSearchSubmitted]);
 
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     clearSearch({ clearSelection: true });
-    setDraftCriteria(defaultCriteria);
+    setDraftCriteria({ ...defaultCriteria });
     setFormEpoch((n) => n + 1);
-  };
+  }, [clearSearch]);
 
   if (isFieldsLoading) {
     return (
@@ -218,7 +180,20 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
           overflow: 'hidden',
         }}
       >
-        <Box sx={{ px: 2, pt: 2, pb: 1, flexShrink: 0 }}>
+        <Box sx={{ px: 2, pt: 1.5, pb: 1, flexShrink: 0 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+            <Tooltip title={t('materialSearch.filters.hidePanel', 'הסתר סינון — טבלה מלאה')}>
+              <IconButton
+                size="small"
+                onClick={() => setCriteriaPanelOpen(false)}
+                id="hide-criteria-panel-btn"
+                aria-label={t('materialSearch.filters.hidePanelShort', 'הסתר סינון')}
+                sx={{ color: 'text.secondary' }}
+              >
+                <ChevronRight fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
           <SavedSearches
             currentCriteria={draftCriteria}
             currentSearchFieldKeys={activeSearchFields}
@@ -247,7 +222,7 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
               key={`criteria-form-${formEpoch}`}
               fields={visibleFields}
               criteria={draftCriteria}
-              onChange={setDraftCriteria}
+              onChange={handleCriteriaChange}
               onSearch={handleSearch}
               onClear={handleClear}
               isLoading={isSearchBusy}
@@ -261,57 +236,53 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
     );
   }
 
-  // ── Hero / centered mode (original first-screen look) ──────────────────
+  // ── Hero / centered — polished criteria card ─────────────────────────
   return (
     <Box
+      className="mdg-criteria-card"
       sx={{
         width: '100%',
-        bgcolor: 'rgba(255,255,255,0.82)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        borderRadius: 4,
-        border: '1px solid rgba(255,255,255,0.9)',
+        height: 'auto',
+        // Compact height — still roomy enough for fields
+        minHeight: { xs: '50%', sm: '54%', md: '58%' },
+        maxHeight: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: 'rgba(255,255,255,0.94)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderRadius: 2.5,
+        border: '1px solid rgba(226, 232, 240, 0.95)',
         boxShadow: `
-          0 4px 6px -1px rgba(79, 70, 229, 0.05),
-          0 20px 40px -8px rgba(79, 70, 229, 0.12),
-          0 0 0 1px rgba(79, 70, 229, 0.06)
+          0 1px 2px rgba(15, 23, 42, 0.04),
+          0 12px 28px -8px rgba(79, 70, 229, 0.1),
+          0 0 0 1px rgba(79, 70, 229, 0.05)
         `,
         overflow: 'hidden',
       }}
     >
+      {/* Brand strip — indigo palette (not white), Sherlok + saved searches */}
       <Box
+        className="mdg-criteria-brand-bar"
         sx={{
-          // Soft blue–indigo wash (same family as primary #4F46E5), not plain white
+          flexShrink: 0,
+          // Theme indigo ladder — deep, not white
           background: `
-            radial-gradient(ellipse 80% 120% at 0% 0%, rgba(99, 102, 241, 0.14) 0%, transparent 55%),
-            radial-gradient(ellipse 70% 100% at 100% 100%, rgba(59, 130, 246, 0.12) 0%, transparent 50%),
-            linear-gradient(135deg, #F0F4FF 0%, #E8EEFF 40%, #EEF2FF 70%, #F5F3FF 100%)
+            radial-gradient(ellipse 90% 120% at 100% 0%, rgba(129, 140, 248, 0.35) 0%, transparent 55%),
+            radial-gradient(ellipse 70% 100% at 0% 100%, rgba(124, 58, 237, 0.28) 0%, transparent 50%),
+            linear-gradient(125deg, #312E81 0%, #3730A3 28%, #4F46E5 62%, #6366F1 100%)
           `,
-          borderBottom: '1px solid rgba(79, 70, 229, 0.12)',
-          px: { xs: 3, md: 5 },
-          py: { xs: 3.5, md: 4.5 },
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
+          px: { xs: 2, md: 3 },
+          py: { xs: 1.5, md: 1.75 },
           position: 'relative',
           overflow: 'hidden',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: -40,
-            left: -40,
-            width: 180,
-            height: 180,
-            borderRadius: '50%',
-            background: 'rgba(59, 130, 246, 0.1)',
-            pointerEvents: 'none',
-          },
           '&::after': {
             content: '""',
             position: 'absolute',
-            bottom: -60,
-            right: 60,
-            width: 240,
-            height: 240,
-            borderRadius: '50%',
-            background: 'rgba(99, 102, 241, 0.1)',
+            inset: 0,
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 45%, rgba(15,23,42,0.12) 100%)',
             pointerEvents: 'none',
           },
         }}
@@ -322,14 +293,15 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
             zIndex: 1,
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             gap: 2,
             flexWrap: 'wrap',
           }}
         >
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <SherlokBrand
-              size="lg"
+              size="md"
+              onDark
               subtitle={t(
                 'materialSearch.hero.subtitle',
                 'הגדר קריטריונים ולחץ חיפוש לצפייה בתוצאות',
@@ -339,6 +311,7 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
           <Box sx={{ flexShrink: 0 }}>
             <SavedSearches
               compact
+              surface="brand"
               currentCriteria={draftCriteria}
               currentSearchFieldKeys={activeSearchFields}
               onApplySaved={handleApplySaved}
@@ -347,17 +320,32 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
         </Box>
       </Box>
 
-      <Box sx={{ px: { xs: 3, md: 5 }, pt: 3.5, pb: 4 }}>
+      {/* Body: fills min-height; fields scroll when content exceeds */}
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          px: { xs: 2, sm: 2.5, md: 3 },
+          pt: 1.5,
+          pb: 1.25,
+          overflow: 'hidden',
+          bgcolor: '#FFFFFF',
+        }}
+      >
         {visibleFields && (
           <MaterialSearchFilters
             key={`criteria-form-${formEpoch}`}
             fields={visibleFields}
             criteria={draftCriteria}
-            onChange={setDraftCriteria}
+            onChange={handleCriteriaChange}
             onSearch={handleSearch}
             onClear={handleClear}
             isLoading={isSearchBusy}
             grid
+            stickyActions
           />
         )}
       </Box>

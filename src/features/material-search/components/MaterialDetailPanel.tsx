@@ -6,10 +6,13 @@ import {
   Alert,
   Dialog,
   DialogContent,
+  DialogActions,
   IconButton,
   Fade,
+  Snackbar,
+  CircularProgress,
 } from '@mui/material';
-import { useRef } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import {
   ErrorOutline,
   Refresh,
@@ -23,16 +26,19 @@ import {
   AccountTreeOutlined,
   LabelOutlined,
   AssignmentOutlined,
+  OpenInNew,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useRecoilState } from 'recoil';
 import { selectedResultRowIdState } from '../state/search.state';
 import { useMaterialDetailsQuery } from '../hooks/useMaterialSearch';
+import { materialServiceInstance } from '../api/materialService';
 import {
   matnrFromResultRowId,
   werksFromResultRowId,
 } from '../types/material';
 import { formatDate } from '../../../utils/formatDate';
+import { useToast } from '../../../hooks/useToast';
 import {
   InfoCard,
   TimelineRow,
@@ -51,6 +57,9 @@ const chipSx = {
 export function MaterialDetailPanel() {
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useRecoilState(selectedResultRowIdState);
+  const [openingMdg, setOpeningMdg] = useState(false);
+  const { open: toastOpen, message: toastMessage, severity: toastSeverity, showToast, setOpen: setToastOpen } =
+    useToast();
 
   const displayIdRef = useRef<string | null>(null);
   if (selectedId) displayIdRef.current = selectedId;
@@ -65,6 +74,28 @@ export function MaterialDetailPanel() {
   );
 
   const handleClose = () => setSelectedId(null);
+
+  /** GET mdg-url from backend → open SAP MDG material page immediately. */
+  const handleOpenInMdg = useCallback(async () => {
+    const matnr = material?.matnr || detailMatnr;
+    if (!matnr || openingMdg) return;
+    setOpeningMdg(true);
+    try {
+      const url = await materialServiceInstance.getMdgOpenUrl(
+        matnr,
+        detailWerks || undefined,
+      );
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Open in MDG failed', err);
+      showToast(
+        t('materialSearch.details.openInMdgFailed', 'לא ניתן לפתוח את החומר ב-SAP MDG'),
+        'error',
+      );
+    } finally {
+      setOpeningMdg(false);
+    }
+  }, [material?.matnr, detailMatnr, detailWerks, openingMdg, showToast, t]);
 
   const statusCode = material?.global_status?.code ?? '';
   const isActive =
@@ -201,11 +232,12 @@ export function MaterialDetailPanel() {
             <IconButton
               onClick={handleClose}
               size="small"
+              aria-label={t('materialSearch.details.close', 'סגור')}
               sx={{
                 position: 'absolute',
                 top: 8,
                 left: 8,
-                zIndex: 1,
+                zIndex: 2,
                 p: 0.6,
                 color: 'rgba(255,255,255,0.75)',
                 '&:hover': { color: 'white', bgcolor: 'rgba(255,255,255,0.15)' },
@@ -219,7 +251,8 @@ export function MaterialDetailPanel() {
                 display: 'flex',
                 alignItems: 'flex-start',
                 gap: 1.75,
-                pr: 5,
+                pr: 1,
+                pl: 4.5,
                 position: 'relative',
                 zIndex: 1,
               }}
@@ -550,8 +583,66 @@ export function MaterialDetailPanel() {
               </Box>
             </Box>
           </DialogContent>
+
+          {/* Primary CTA — sticky footer, always in reach (desktop + mobile) */}
+          <DialogActions
+            sx={{
+              px: 2.5,
+              py: 1.75,
+              gap: 1,
+              borderTop: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              justifyContent: 'stretch',
+              flexShrink: 0,
+            }}
+          >
+            <Button
+              fullWidth
+              size="large"
+              variant="contained"
+              disableElevation
+              onClick={() => void handleOpenInMdg()}
+              disabled={openingMdg}
+              startIcon={
+                openingMdg ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <OpenInNew />
+                )
+              }
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                py: 1.15,
+                borderRadius: 2,
+                bgcolor: 'primary.main',
+                '&:hover': { bgcolor: 'primary.dark' },
+              }}
+            >
+              {openingMdg
+                ? t('materialSearch.details.openingMdg', 'פותח…')
+                : t('materialSearch.details.openInMdg', 'פתח ב-SAP MDG')}
+            </Button>
+          </DialogActions>
         </>
       )}
+
+      <Snackbar
+        open={toastOpen}
+        autoHideDuration={3500}
+        onClose={() => setToastOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setToastOpen(false)}
+          severity={toastSeverity}
+          sx={{ width: '100%' }}
+        >
+          {toastMessage}
+        </Alert>
+      </Snackbar>
     </Dialog>
   );
 }
