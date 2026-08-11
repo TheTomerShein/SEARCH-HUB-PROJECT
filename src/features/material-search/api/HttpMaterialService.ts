@@ -9,16 +9,7 @@ import { logger } from '../../../utils/logger';
 import { apiClient, ApiError } from './apiClient';
 import { buildSearchRequest } from './buildSearchRequest';
 import { normalizeSearchResult } from './normalizeSearchResult';
-import type { MaterialService, UserBranch } from './serviceContract';
-
-function parseUserBranch(raw: unknown): UserBranch | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const r = raw as Record<string, unknown>;
-  const w = r.werks ?? r.WERKS ?? r.Werks;
-  if (w == null || w === '') return null;
-  const werks = String(w).trim();
-  return werks ? { werks } : null;
-}
+import type { MaterialService } from './serviceContract';
 
 export class HttpMaterialService implements MaterialService {
   private fieldsConfigCache: FieldsConfig | null = null;
@@ -54,23 +45,35 @@ export class HttpMaterialService implements MaterialService {
   }
 
   /**
-   * GET /api/user/branch → `{ werks: "XXXX" }`
-   * Override path with VITE_USER_BRANCH_PATH if needed.
+   * GET /api/materials/:matnr/mdg-url?werks=
+   * Response: `{ "url": "https://..." }` (also accepts url/URL/link/href or raw string).
+   * Path template override: VITE_MDG_OPEN_URL_PATH with `{matnr}` placeholder.
    */
-  async getUserBranch(): Promise<UserBranch | null> {
-    const path =
-      (import.meta.env.VITE_USER_BRANCH_PATH as string | undefined)?.trim() ||
-      '/api/user/branch';
+  async getMdgOpenUrl(materialNumber: string, werks?: string): Promise<string> {
+    const template =
+      (import.meta.env.VITE_MDG_OPEN_URL_PATH as string | undefined)?.trim() ||
+      '/api/materials/{matnr}/mdg-url';
+    const pathBase = template.replace(
+      '{matnr}',
+      encodeURIComponent(materialNumber),
+    );
+    const qs = werks ? `?werks=${encodeURIComponent(werks)}` : '';
+    const path = `${pathBase}${qs}`;
     logger.info(`[HttpMaterialService] GET ${path}`);
-    try {
-      const raw = await apiClient.get<unknown>(path);
-      return parseUserBranch(raw);
-    } catch (err: unknown) {
-      if (err instanceof ApiError && err.status === 404) {
-        logger.info('[HttpMaterialService] getUserBranch: 404 — no branch for user');
-        return null;
-      }
-      throw err;
+    const raw = await apiClient.get<unknown>(path);
+    return parseMdgOpenUrlResponse(raw);
+  }
+}
+
+/** Accept common backend shapes for the MDG deep-link. */
+function parseMdgOpenUrlResponse(raw: unknown): string {
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  if (raw && typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    for (const key of ['url', 'URL', 'link', 'href', 'mdgUrl', 'mdg_url'] as const) {
+      const v = o[key];
+      if (typeof v === 'string' && v.trim()) return v.trim();
     }
   }
+  throw new Error('MDG open URL missing in response');
 }

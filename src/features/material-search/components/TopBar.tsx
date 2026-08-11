@@ -123,7 +123,7 @@ export function TopBar() {
   const { openErrorsReport: runErrorsReportTransfer } = useErrorsReportTransfer();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<0 | 1 | 2>(0);
-  const { isLgUp, isMdUp, setFilterDrawerOpen } = useLayoutMode();
+  const { isMdUp, criteriaPanelOpen, setCriteriaPanelOpen } = useLayoutMode();
   const { copyLink } = useShareableLink();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const {
@@ -232,15 +232,53 @@ export function TopBar() {
       </Box>
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0, ml: 'auto' }}>
-        {!isLgUp && searchSubmitted && (
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<FilterList />}
-            onClick={() => setFilterDrawerOpen(true)}
+        {searchSubmitted && (
+          <Tooltip
+            title={
+              criteriaPanelOpen
+                ? t('materialSearch.filters.hidePanel', 'הסתר סינון — טבלה מלאה')
+                : t('materialSearch.filters.showPanel', 'הצג סינון')
+            }
           >
-            {t('materialSearch.filters.title', 'סינון')}
-          </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<FilterList />}
+              onClick={() => setCriteriaPanelOpen((open) => !open)}
+              id="toggle-criteria-panel-btn"
+              sx={{
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                ...(criteriaPanelOpen
+                  ? {
+                      // Panel open → soft “hide”
+                      color: '#64748B',
+                      borderColor: '#E2E8F0',
+                      bgcolor: 'transparent',
+                      '&:hover': {
+                        color: '#334155',
+                        borderColor: '#CBD5E1',
+                        bgcolor: '#F1F5F9',
+                      },
+                    }
+                  : {
+                      // Panel closed → slightly stronger “show” (not solid primary)
+                      color: '#4F46E5',
+                      borderColor: 'rgba(79,70,229,0.45)',
+                      bgcolor: 'rgba(79,70,229,0.08)',
+                      '&:hover': {
+                        color: '#3730A3',
+                        borderColor: 'rgba(79,70,229,0.65)',
+                        bgcolor: 'rgba(79,70,229,0.14)',
+                      },
+                    }),
+              }}
+            >
+              {criteriaPanelOpen
+                ? t('materialSearch.filters.hidePanelShort', 'הסתר סינון')
+                : t('materialSearch.filters.showPanelShort', 'הצג סינון')}
+            </Button>
+          </Tooltip>
         )}
 
         {isMdUp ? (
@@ -320,38 +358,27 @@ export function TopBar() {
               </Box>
             )}
 
-            {searchSubmitted && uniqueMatnrCount > 0 && (
-              <Tooltip
-                title={
-                  canCompare
-                    ? t('materialSearch.compare.button')
-                    : t(
-                        'materialSearch.compare.selectHint',
-                        'בחר 2–4 חומרים להשוואה',
-                      )
-                }
-              >
+            {/* Compare only when 2–4 unique materials selected (hidden otherwise). */}
+            {searchSubmitted && canCompare && (
+              <Tooltip title={t('materialSearch.compare.button')}>
                 <WithCornerCount count={selCount} tone="neutral">
                   <Button
                     size="small"
                     variant="outlined"
                     startIcon={<CompareIcon fontSize="small" />}
                     onClick={() => setCompareOpen(true)}
-                    disabled={!canCompare}
                     id="compare-materials-btn"
                     sx={{
                       fontWeight: 700,
                       px: 1.5,
-                      color: canCompare ? '#334155' : undefined,
-                      borderColor: canCompare ? '#CBD5E1' : undefined,
-                      bgcolor: canCompare ? '#F8FAFC' : undefined,
-                      '&:hover': canCompare
-                        ? {
-                            bgcolor: '#F1F5F9',
-                            borderColor: '#94A3B8',
-                            color: '#0F172A',
-                          }
-                        : undefined,
+                      color: '#334155',
+                      borderColor: '#CBD5E1',
+                      bgcolor: '#F8FAFC',
+                      '&:hover': {
+                        bgcolor: '#F1F5F9',
+                        borderColor: '#94A3B8',
+                        color: '#0F172A',
+                      },
                     }}
                   >
                     {t('materialSearch.compare.button')}
@@ -475,13 +502,12 @@ export function TopBar() {
                   {selCount > 0 ? ` · ${selCount}` : ''}
                 </MenuItem>
               )}
-              {searchSubmitted && uniqueMatnrCount > 0 && (
+              {searchSubmitted && canCompare && (
                 <MenuItem
                   onClick={() => {
                     setAnchorEl(null);
                     setCompareOpen(true);
                   }}
-                  disabled={!canCompare}
                 >
                   <CompareIcon sx={{ mr: 1 }} fontSize="small" />
                   {t('materialSearch.compare.button')}

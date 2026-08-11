@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, memo } from 'react';
+import { useMemo, useState, useCallback, memo, useRef } from 'react';
 import {
   Box,
   TextField,
@@ -7,7 +7,6 @@ import {
   FormControlLabel,
   Select,
   MenuItem,
-  SelectChangeEvent,
   Button,
   ToggleButtonGroup,
   ToggleButton,
@@ -40,6 +39,12 @@ import {
   dedupeStrings,
   handleMultiPaste,
 } from './filters/multiValuePaste';
+import {
+  isRequiredCriteriaFieldName,
+  isCriteriaValueFilled,
+  getMissingRequiredCriteriaFieldNames,
+  criteriaHasAllRequired,
+} from '../requiredCriteriaFields';
 
 export { defaultCriteria } from '../defaultCriteria';
 
@@ -403,14 +408,20 @@ function MultiValuesManagerDialog({
   );
 }
 
-/** Shared Autocomplete chrome for multi-value fields. */
+/** Shared Autocomplete chrome — idle / hover / focus ladder. */
 const autoSx = {
   fontFamily: HEEBO,
+  width: '100%',
+  maxWidth: '100%',
+  minWidth: 0,
   '& .MuiOutlinedInput-root': {
     bgcolor: '#F8FAFC',
     borderRadius: '10px',
-    py: 0.35,
+    minHeight: 38,
+    py: 0.25,
     fontFamily: HEEBO,
+    maxWidth: '100%',
+    transition: 'background-color 0.12s ease, box-shadow 0.12s ease',
     '&:hover': { bgcolor: '#F1F5F9' },
     '&.Mui-focused': {
       bgcolor: '#FFFFFF',
@@ -420,7 +431,22 @@ const autoSx = {
     '&:hover fieldset': { borderColor: '#CBD5E1' },
     '&.Mui-focused fieldset': { borderColor: '#4F46E5', borderWidth: '1px' },
   },
-  '& .MuiAutocomplete-tag': { m: '2px' },
+  '& .MuiAutocomplete-tag': { m: '2px', maxWidth: '100%' },
+  '& .MuiAutocomplete-inputRoot': { flexWrap: 'wrap' },
+} as const;
+
+/** Required empty field — calm indigo, not error-red until submit fail */
+const autoSxRequiredEmpty = {
+  ...autoSx,
+  '& .MuiOutlinedInput-root': {
+    ...autoSx['& .MuiOutlinedInput-root'],
+    bgcolor: '#F8FAFF',
+    '& fieldset': {
+      borderColor: 'rgba(79, 70, 229, 0.35)',
+      borderRadius: '10px',
+    },
+    '&:hover fieldset': { borderColor: 'rgba(79, 70, 229, 0.5)' },
+  },
 } as const;
 
 /**
@@ -476,8 +502,9 @@ function renderLimitedTags(
 /**
  * Multi free-text (MATNR, etc.): Autocomplete freeSolo.
  * Enter / paste / blur; × removes visible chip; +N opens manager.
+ * Dialog mounts only when opened (many fields on hero would otherwise lag).
  */
-function FreeSoloMultiField({
+const FreeSoloMultiField = memo(function FreeSoloMultiField({
   values,
   onChangeValues,
   placeholder,
@@ -500,14 +527,15 @@ function FreeSoloMultiField({
 }) {
   const [managerOpen, setManagerOpen] = useState(false);
   const getLabel = useCallback((v: string) => v, []);
+  const openManager = useCallback(() => setManagerOpen(true), []);
 
   return (
     <>
       <Autocomplete
         multiple
         freeSolo
-        options={[]}
-        filterOptions={(x) => x}
+        options={EMPTY_OPTIONS}
+        filterOptions={identityFilter}
         value={values}
         onChange={(_, next) => {
           onChangeValues(dedupeStrings(next.map(String)));
@@ -519,13 +547,14 @@ function FreeSoloMultiField({
         selectOnFocus
         handleHomeEndKeys
         openOnFocus={false}
+        forcePopupIcon={false}
         sx={autoSx}
         renderTags={(tagValue, getTagProps) =>
           renderLimitedTags(
             tagValue.map(String),
             getTagProps,
             getLabel,
-            () => setManagerOpen(true),
+            openManager,
           )
         }
         renderInput={(params) => (
@@ -560,24 +589,29 @@ function FreeSoloMultiField({
           />
         )}
       />
-      <MultiValuesManagerDialog
-        open={managerOpen}
-        onClose={() => setManagerOpen(false)}
-        title={fieldTitle}
-        values={values}
-        getLabel={getLabel}
-        onChangeValues={onChangeValues}
-        t={t}
-      />
+      {managerOpen && (
+        <MultiValuesManagerDialog
+          open
+          onClose={() => setManagerOpen(false)}
+          title={fieldTitle}
+          values={values}
+          getLabel={getLabel}
+          onChangeValues={onChangeValues}
+          t={t}
+        />
+      )}
     </>
   );
-}
+});
+
+const EMPTY_OPTIONS: string[] = [];
+const identityFilter = <T,>(x: T) => x;
 
 /**
  * Multi option fields (MTART, WERKS, …): Autocomplete multiple.
  * Stores string[] of option values on criteria.
  */
-function OptionsMultiField({
+const OptionsMultiField = memo(function OptionsMultiField({
   values,
   options,
   onChangeValues,
@@ -585,6 +619,8 @@ function OptionsMultiField({
   size,
   t,
   fieldTitle,
+  requiredEmpty,
+  error,
 }: {
   values: string[];
   options: FieldOption[];
@@ -593,8 +629,11 @@ function OptionsMultiField({
   size: 'small' | 'medium';
   t: Translate;
   fieldTitle: string;
+  requiredEmpty?: boolean;
+  error?: boolean;
 }) {
   const [managerOpen, setManagerOpen] = useState(false);
+  const openManager = useCallback(() => setManagerOpen(true), []);
 
   const byValue = useMemo(
     () => new Map(options.map((o) => [String(o.value).toUpperCase(), o])),
@@ -631,6 +670,24 @@ function OptionsMultiField({
 
   const checkedSet = useMemo(() => new Set(values.map(String)), [values]);
 
+  const fieldChrome = error
+    ? {
+        ...autoSx,
+        '& .MuiOutlinedInput-root': {
+          ...autoSx['& .MuiOutlinedInput-root'],
+          bgcolor: '#FFF',
+          '& fieldset': { borderColor: '#F43F5E', borderRadius: '10px' },
+          '&.Mui-focused': {
+            bgcolor: '#FFFFFF',
+            boxShadow: '0 0 0 3px rgba(244, 63, 94, 0.12)',
+          },
+          '&.Mui-focused fieldset': { borderColor: '#F43F5E', borderWidth: '1px' },
+        },
+      }
+    : requiredEmpty
+      ? autoSxRequiredEmpty
+      : autoSx;
+
   return (
     <>
       <Autocomplete
@@ -655,7 +712,7 @@ function OptionsMultiField({
         size={size}
         fullWidth
         disableCloseOnSelect
-        sx={autoSx}
+        sx={fieldChrome}
         renderOption={(props, option) => {
           const { key, ...rest } = props as { key?: string } & typeof props;
           const label =
@@ -674,7 +731,7 @@ function OptionsMultiField({
             tagValue.map((o) => (typeof o === 'string' ? o : String(o.value))),
             getTagProps,
             getLabel,
-            () => setManagerOpen(true),
+            openManager,
           )
         }
         renderInput={(params) => (
@@ -687,41 +744,372 @@ function OptionsMultiField({
           />
         )}
       />
-      <MultiValuesManagerDialog
-        open={managerOpen}
-        onClose={() => setManagerOpen(false)}
-        title={fieldTitle}
-        values={values}
-        getLabel={getLabel}
-        onChangeValues={onChangeValues}
-        t={t}
-      />
+      {managerOpen && (
+        <MultiValuesManagerDialog
+          open
+          onClose={() => setManagerOpen(false)}
+          title={fieldTitle}
+          values={values}
+          getLabel={getLabel}
+          onChangeValues={onChangeValues}
+          t={t}
+        />
+      )}
     </>
   );
-}
+});
 
-/** Label above control — avoids MUI RTL notch issues. */
-function FieldLabel({ label, children }: { label: string; children: React.ReactNode }) {
+/** Label above control — logical RTL spacing. */
+function FieldLabel({
+  label,
+  required,
+  error,
+  errorText,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  error?: boolean;
+  errorText?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.65 }}>
-      <Typography
-        variant="caption"
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 0 }}>
+      <Box
         sx={{
-          fontWeight: 600,
-          color: '#64748B',
-          fontSize: '0.75rem',
-          letterSpacing: '0.02em',
-          pr: 0.25,
-          fontFamily: HEEBO,
-          lineHeight: 1.25,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.75,
+          flexWrap: 'wrap',
+          minHeight: 16,
         }}
       >
-        {label}
-      </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 600,
+            color: error ? 'error.main' : '#64748B',
+            fontSize: '0.75rem',
+            letterSpacing: '0.02em',
+            fontFamily: HEEBO,
+            lineHeight: 1.25,
+          }}
+        >
+          {label}
+          {required && (
+            <Box
+              component="span"
+              sx={{ color: error ? 'error.main' : '#4F46E5', ms: 0.35 }}
+              aria-hidden
+            >
+              *
+            </Box>
+          )}
+        </Typography>
+        {required && (
+          <Box
+            component="span"
+            sx={{
+              fontSize: '0.62rem',
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+              color: error ? 'error.dark' : '#4F46E5',
+              bgcolor: error ? 'rgba(239,68,68,0.1)' : 'rgba(79,70,229,0.1)',
+              border: '1px solid',
+              borderColor: error ? 'rgba(239,68,68,0.25)' : 'rgba(79,70,229,0.22)',
+              borderRadius: '6px',
+              px: 0.65,
+              py: 0.15,
+              lineHeight: 1.4,
+              fontFamily: HEEBO,
+            }}
+          >
+            חובה
+          </Box>
+        )}
+      </Box>
       {children}
+      {error && errorText && (
+        <Typography variant="caption" color="error" sx={{ fontSize: '0.7rem', lineHeight: 1.3 }}>
+          {errorText}
+        </Typography>
+      )}
     </Box>
   );
 }
+
+function shallowEqualValues(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!Object.is(a[i], b[i])) return false;
+    return true;
+  }
+  return false;
+}
+
+type PatchCriteria = (patch: Record<string, unknown>) => void;
+
+type CriteriaFieldItemProps = {
+  field: SearchFieldDefinition;
+  value: unknown;
+  logicValue: unknown;
+  index: number;
+  inputSize: 'small' | 'medium';
+  grid: boolean;
+  showRequiredErrors: boolean;
+  patchCriteria: PatchCriteria;
+  t: Translate;
+};
+
+/**
+ * One criteria control — memoized so typing in field A does not re-render fields B…N.
+ */
+const CriteriaFieldItem = memo(
+  function CriteriaFieldItem({
+    field,
+    value,
+    logicValue,
+    index,
+    inputSize,
+    grid,
+    showRequiredErrors,
+    patchCriteria,
+    t,
+  }: CriteriaFieldItemProps) {
+    const type = (field.fieldType || 'CHAR').toUpperCase();
+    const isWerksField =
+      type === 'WERKS_SELECTOR' || field.fieldName?.toUpperCase() === 'WERKS';
+    const fieldLabel =
+      isWerksField && (!field.hebrewDesc || field.hebrewDesc.toUpperCase() === 'WERKS')
+        ? t('materialSearch.filters.plants')
+        : t(field.hebrewDesc);
+    const required = isRequiredCriteriaFieldName(field.fieldName);
+    const fieldEmpty = !isCriteriaValueFilled(value);
+    const fieldError = required && showRequiredErrors && fieldEmpty;
+    const requiredErrorText = t('materialSearch.filters.requiredField', 'שדה חובה');
+    const reqLabel = {
+      required,
+      error: fieldError,
+      errorText: fieldError ? requiredErrorText : undefined,
+    } as const;
+
+    const setValues = useCallback(
+      (next: string[]) => {
+        patchCriteria({ [field.fieldName]: next });
+      },
+      [patchCriteria, field.fieldName],
+    );
+
+    // minWidth 0 so grid columns can shrink without clipping inputs
+    const wrapSx = { minWidth: 0, width: '100%', maxWidth: '100%' };
+
+    if (isWerksField) {
+      const currentLogic = (logicValue as string) || 'OR';
+      const selectedPlants = asStringList(value);
+      return (
+        <Box sx={wrapSx}>
+          <FieldLabel label={fieldLabel} {...reqLabel}>
+            <OptionsMultiField
+              values={selectedPlants}
+              options={field.options ?? []}
+              onChangeValues={setValues}
+              placeholder={fieldLabel}
+              size={inputSize}
+              t={t}
+              fieldTitle={fieldLabel}
+              requiredEmpty={required && fieldEmpty}
+              error={fieldError}
+            />
+            <Box sx={{ display: 'flex', gap: 0.5, mt: 0.75 }}>
+              <ToggleButtonGroup
+                value={currentLogic}
+                exclusive
+                onChange={(_e, newLogic: 'OR' | 'AND' | null) => {
+                  if (newLogic != null) patchCriteria({ [`${field.fieldName}_LOGIC`]: newLogic });
+                }}
+                aria-label="logic operator"
+                size="small"
+                fullWidth
+                sx={{
+                  '& .MuiToggleButton-root': {
+                    whiteSpace: 'nowrap',
+                    fontSize: '0.68rem',
+                    py: 0.25,
+                    minHeight: 28,
+                    textTransform: 'none',
+                    borderColor: 'divider',
+                    fontFamily: HEEBO,
+                  },
+                }}
+              >
+                <ToggleButton value="OR" aria-label="match any">
+                  {t('materialSearch.filters.matchAny')}
+                </ToggleButton>
+                <ToggleButton value="AND" aria-label="match all">
+                  {t('materialSearch.filters.matchAll')}
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+          </FieldLabel>
+        </Box>
+      );
+    }
+
+    if (type === 'CHAR' || type === 'NUMC' || type === 'QUAN' || type === 'STRING' || type === 'NUMBER') {
+      const vals = asStringList(value);
+      return (
+        <Box sx={wrapSx}>
+          <FieldLabel label={t(field.hebrewDesc)} {...reqLabel}>
+            <FreeSoloMultiField
+              values={vals}
+              onChangeValues={setValues}
+              placeholder={t(field.hebrewDesc)}
+              size={inputSize}
+              t={t}
+              digitsOnly={type === 'NUMC' || type === 'QUAN'}
+              maxLength={field.fieldLength}
+              autoFocus={index === 0}
+              fieldTitle={t(field.hebrewDesc)}
+            />
+          </FieldLabel>
+        </Box>
+      );
+    }
+
+    if (type === 'DATS' || type === 'DATE') {
+      const rawVal = typeof value === 'string' ? value : '';
+      const displayVal =
+        rawVal.length === 8
+          ? `${rawVal.slice(0, 4)}-${rawVal.slice(4, 6)}-${rawVal.slice(6, 8)}`
+          : '';
+      return (
+        <Box sx={wrapSx}>
+          <FieldLabel label={t(field.hebrewDesc)} {...reqLabel}>
+            <TextField
+              type="date"
+              size={inputSize}
+              fullWidth
+              value={displayVal}
+              error={fieldError}
+              onChange={(e) => {
+                patchCriteria({ [field.fieldName]: e.target.value.replace(/-/g, '') });
+              }}
+            />
+          </FieldLabel>
+        </Box>
+      );
+    }
+
+    if (type === 'MULTI_SELECT' || type === 'SELECT') {
+      if (type === 'MULTI_SELECT') {
+        const multiVals = asStringList(value);
+        return (
+          <Box sx={wrapSx}>
+            <FieldLabel label={t(field.hebrewDesc)} {...reqLabel}>
+              <OptionsMultiField
+                values={multiVals}
+                options={field.options ?? []}
+                onChangeValues={setValues}
+                placeholder={t(field.hebrewDesc)}
+                size={inputSize}
+                t={t}
+                fieldTitle={t(field.hebrewDesc)}
+              />
+            </FieldLabel>
+          </Box>
+        );
+      }
+
+      return (
+        <Box sx={wrapSx}>
+          <FieldLabel label={t(field.hebrewDesc)} {...reqLabel}>
+            <Select
+              value={(value as string) || ''}
+              onChange={(e) => patchCriteria({ [field.fieldName]: e.target.value })}
+              displayEmpty
+              size={inputSize}
+              fullWidth
+              error={fieldError}
+              sx={{
+                bgcolor: '#F8FAFC',
+                borderRadius: '10px',
+                '& .MuiSelect-select': {
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                },
+              }}
+              renderValue={(selected) => {
+                if (!selected) {
+                  return <span style={{ color: '#94A3B8' }}>{t(field.hebrewDesc)}</span>;
+                }
+                const opt = field.options?.find((o) => o.value === selected);
+                return opt ? t(opt.label) : String(selected);
+              }}
+            >
+              {field.options?.map((opt) => (
+                <MenuItem key={String(opt.value)} value={opt.value}>
+                  {t(opt.label)}
+                </MenuItem>
+              ))}
+            </Select>
+          </FieldLabel>
+        </Box>
+      );
+    }
+
+    if (type === 'BOOLEAN') {
+      return (
+        <Box sx={wrapSx}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={!!value}
+                onChange={(e) => patchCriteria({ [field.fieldName]: e.target.checked })}
+              />
+            }
+            label={t(field.hebrewDesc)}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              height: grid ? 56 : undefined,
+              alignSelf: 'flex-end',
+              pl: grid ? 1 : 0,
+            }}
+          />
+        </Box>
+      );
+    }
+
+    const fallbackVals = asStringList(value);
+    return (
+      <Box sx={wrapSx}>
+        <FieldLabel label={t(field.hebrewDesc)} {...reqLabel}>
+          <FreeSoloMultiField
+            values={fallbackVals}
+            onChangeValues={setValues}
+            placeholder={t(field.hebrewDesc)}
+            size={inputSize}
+            t={t}
+            maxLength={field.fieldLength || undefined}
+            fieldTitle={t(field.hebrewDesc)}
+          />
+        </FieldLabel>
+      </Box>
+    );
+  },
+  (prev, next) =>
+    prev.field === next.field &&
+    prev.index === next.index &&
+    prev.inputSize === next.inputSize &&
+    prev.grid === next.grid &&
+    prev.showRequiredErrors === next.showRequiredErrors &&
+    prev.t === next.t &&
+    prev.patchCriteria === next.patchCriteria &&
+    prev.logicValue === next.logicValue &&
+    shallowEqualValues(prev.value, next.value),
+);
 
 export function MaterialSearchFilters({
   fields,
@@ -735,228 +1123,43 @@ export function MaterialSearchFilters({
   stickyActions = false,
 }: MaterialSearchFiltersProps) {
   const { t } = useTranslation();
+  const [showRequiredErrors, setShowRequiredErrors] = useState(false);
 
-  const setFieldValues = (field: string, next: string[]) => {
-    onChange({ ...criteria, [field]: next });
-  };
+  const missingRequired = useMemo(
+    () => getMissingRequiredCriteriaFieldNames(criteria),
+    [criteria],
+  );
+  const canSubmit = missingRequired.length === 0;
 
-  const handleSelectChange = (field: string) => (event: SelectChangeEvent<unknown>) => {
-    onChange({ ...criteria, [field]: event.target.value as SearchCriteria[string] });
-  };
-
-  const handleCheckboxChange = (field: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...criteria, [field]: event.target.checked });
-  };
-
-  const handleLogicChange = (field: string) => (
-    _event: React.MouseEvent<HTMLElement>,
-    newLogic: 'OR' | 'AND' | null,
-  ) => {
-    if (newLogic !== null) {
-      onChange({ ...criteria, [`${field}_LOGIC`]: newLogic });
-    }
-  };
+  // Stable patcher — avoids re-creating handlers for every field on each keystroke
+  const criteriaRef = useRef(criteria);
+  criteriaRef.current = criteria;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const patchCriteria = useCallback<PatchCriteria>((patch) => {
+    onChangeRef.current({
+      ...criteriaRef.current,
+      ...(patch as SearchCriteria),
+    });
+  }, []);
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!criteriaHasAllRequired(criteria)) {
+      setShowRequiredErrors(true);
+      return;
+    }
+    setShowRequiredErrors(false);
     onSearch();
   };
 
   const inputSize = grid ? 'medium' : 'small';
   const buttonSize = grid ? 'large' : 'medium';
+  // Narrow t for memo fields (stable enough within session)
+  const tFn = t as Translate;
 
-  const renderField = (field: SearchFieldDefinition, index: number) => {
-    const type = (field.fieldType || 'CHAR').toUpperCase();
-    const rowKey = `${fieldKey(field)}#${index}`;
-    const isWerksField =
-      type === 'WERKS_SELECTOR' || field.fieldName?.toUpperCase() === 'WERKS';
-    const fieldLabel =
-      isWerksField && (!field.hebrewDesc || field.hebrewDesc.toUpperCase() === 'WERKS')
-        ? t('materialSearch.filters.plants')
-        : t(field.hebrewDesc);
-
-    // ── WERKS: multi + OR/AND ───────────────────────────────────────────
-    if (isWerksField) {
-      const currentLogic = (criteria as any)[`${field.fieldName}_LOGIC`] || 'OR';
-      const selectedPlants = asStringList((criteria as any)[field.fieldName]);
-
-      return (
-        <FieldLabel key={rowKey} label={fieldLabel}>
-          <OptionsMultiField
-            values={selectedPlants}
-            options={field.options ?? []}
-            onChangeValues={(next) => setFieldValues(field.fieldName, next)}
-            placeholder={fieldLabel}
-            size="small"
-            t={t}
-            fieldTitle={fieldLabel}
-          />
-          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.75 }}>
-            <ToggleButtonGroup
-              value={currentLogic}
-              exclusive
-              onChange={handleLogicChange(field.fieldName)}
-              aria-label="logic operator"
-              size="small"
-              fullWidth
-              sx={{
-                '& .MuiToggleButton-root': {
-                  whiteSpace: 'nowrap',
-                  fontSize: '0.68rem',
-                  py: 0.25,
-                  minHeight: 28,
-                  textTransform: 'none',
-                  borderColor: 'divider',
-                  fontFamily: HEEBO,
-                },
-              }}
-            >
-              <ToggleButton value="OR" aria-label="match any">
-                {t('materialSearch.filters.matchAny')}
-              </ToggleButton>
-              <ToggleButton value="AND" aria-label="match all">
-                {t('materialSearch.filters.matchAll')}
-              </ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
-        </FieldLabel>
-      );
-    }
-
-    // ── Free text (MATNR, description, …): freeSolo multi chips ─────────
-    if (type === 'CHAR' || type === 'NUMC' || type === 'QUAN' || type === 'STRING' || type === 'NUMBER') {
-      const vals = asStringList((criteria as any)[field.fieldName]);
-      return (
-        <FieldLabel key={rowKey} label={t(field.hebrewDesc)}>
-          <FreeSoloMultiField
-            values={vals}
-            onChangeValues={(next) => setFieldValues(field.fieldName, next)}
-            placeholder={t(field.hebrewDesc)}
-            size={inputSize}
-            t={t}
-            digitsOnly={type === 'NUMC' || type === 'QUAN'}
-            maxLength={field.fieldLength}
-            autoFocus={index === 0}
-            fieldTitle={t(field.hebrewDesc)}
-          />
-        </FieldLabel>
-      );
-    }
-
-    if (type === 'DATS' || type === 'DATE') {
-      const rawVal = (criteria as any)[field.fieldName] || '';
-      const displayVal =
-        rawVal.length === 8
-          ? `${rawVal.slice(0, 4)}-${rawVal.slice(4, 6)}-${rawVal.slice(6, 8)}`
-          : '';
-      return (
-        <FieldLabel key={rowKey} label={t(field.hebrewDesc)}>
-          <TextField
-            type="date"
-            size={inputSize}
-            fullWidth
-            value={displayVal}
-            onChange={(e) => {
-              const val = e.target.value;
-              onChange({ ...criteria, [field.fieldName]: val.replace(/-/g, '') });
-            }}
-          />
-        </FieldLabel>
-      );
-    }
-
-    // ── MULTI_SELECT / SELECT ───────────────────────────────────────────
-    if (type === 'MULTI_SELECT' || type === 'SELECT') {
-      const isMulti = type === 'MULTI_SELECT';
-      if (isMulti) {
-        const multiVals = asStringList((criteria as any)[field.fieldName]);
-        return (
-          <FieldLabel key={rowKey} label={t(field.hebrewDesc)}>
-            <OptionsMultiField
-              values={multiVals}
-              options={field.options ?? []}
-              onChangeValues={(next) => setFieldValues(field.fieldName, next)}
-              placeholder={t(field.hebrewDesc)}
-              size={inputSize}
-              t={t}
-              fieldTitle={t(field.hebrewDesc)}
-            />
-          </FieldLabel>
-        );
-      }
-
-      return (
-        <FieldLabel key={rowKey} label={t(field.hebrewDesc)}>
-          <Select
-            value={(criteria as any)[field.fieldName] || ''}
-            onChange={handleSelectChange(field.fieldName)}
-            displayEmpty
-            size={inputSize}
-            fullWidth
-            sx={{
-              bgcolor: '#F8FAFC',
-              borderRadius: '10px',
-              '& .MuiSelect-select': {
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              },
-            }}
-            renderValue={(selected) => {
-              if (!selected) {
-                return <span style={{ color: '#94A3B8' }}>{t(field.hebrewDesc)}</span>;
-              }
-              const opt = field.options?.find((o) => o.value === selected);
-              return opt ? t(opt.label) : String(selected);
-            }}
-          >
-            {field.options?.map((opt) => (
-              <MenuItem key={String(opt.value)} value={opt.value}>
-                {t(opt.label)}
-              </MenuItem>
-            ))}
-          </Select>
-        </FieldLabel>
-      );
-    }
-
-    if (type === 'BOOLEAN') {
-      return (
-        <FormControlLabel
-          key={rowKey}
-          control={
-            <Checkbox
-              checked={!!((criteria as any)[field.fieldName])}
-              onChange={(e) => handleCheckboxChange(field.fieldName)(e as any)}
-            />
-          }
-          label={t(field.hebrewDesc)}
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            height: grid ? 56 : undefined,
-            alignSelf: 'flex-end',
-            pl: grid ? 1 : 0,
-          }}
-        />
-      );
-    }
-
-    const fallbackVals = asStringList((criteria as any)[field.fieldName]);
-    return (
-      <FieldLabel key={rowKey} label={t(field.hebrewDesc)}>
-        <FreeSoloMultiField
-          values={fallbackVals}
-          onChangeValues={(next) => setFieldValues(field.fieldName, next)}
-          placeholder={t(field.hebrewDesc)}
-          size={inputSize}
-          t={t}
-          maxLength={field.fieldLength || undefined}
-          fieldTitle={t(field.hebrewDesc)}
-        />
-      </FieldLabel>
-    );
-  };
+  // Hero (grid + stickyActions): height follows fields; scrolls when parent is max-capped
+  const fillViewport = grid && stickyActions;
 
   return (
     <Box
@@ -966,8 +1169,12 @@ export function MaterialSearchFilters({
         display: 'flex',
         flexDirection: 'column',
         width: '100%',
-        height: stickyActions ? '100%' : undefined,
+        // Fill taller criteria card; scroll fields when content exceeds
+        height: fillViewport || stickyActions ? '100%' : undefined,
+        maxHeight: fillViewport || stickyActions ? '100%' : undefined,
         minHeight: 0,
+        flex: fillViewport ? 1 : undefined,
+        overflow: fillViewport ? 'hidden' : undefined,
         fontFamily: HEEBO,
         '& .MuiTypography-root, & .MuiInputBase-root, & .MuiButton-root, & .MuiFormControlLabel-label, & .MuiToggleButton-root':
           { fontFamily: HEEBO },
@@ -979,50 +1186,87 @@ export function MaterialSearchFilters({
           flexDirection: grid ? undefined : 'column',
           gridTemplateColumns: grid
             ? {
-                xs: '1fr',
-                sm: '1fr 1fr',
-                md: '1fr 1fr 1fr',
-                lg: '1fr 1fr 1fr 1fr',
+                xs: 'minmax(0, 1fr)',
+                sm: 'repeat(2, minmax(0, 1fr))',
+                md: 'repeat(3, minmax(0, 1fr))',
+                lg: 'repeat(4, minmax(0, 1fr))',
               }
             : undefined,
-          gap: grid ? 3 : 1.75,
+          gap: grid ? { xs: 1.25, sm: 1.5, md: 1.75 } : 1.5,
+          columnGap: grid ? { xs: 1.5, sm: 2, md: 2.25 } : undefined,
+          rowGap: grid ? { xs: 1.5, sm: 1.75 } : undefined,
           width: '100%',
-          flex: stickyActions ? 1 : undefined,
-          maxHeight: grid ? 'calc(100vh - 320px)' : stickyActions ? undefined : 'none',
-          overflowY: grid || stickyActions ? 'auto' : 'visible',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+          flex: fillViewport || stickyActions ? 1 : undefined,
+          maxHeight: fillViewport
+            ? undefined
+            : grid
+              ? 'calc(100vh - 320px)'
+              : stickyActions
+                ? undefined
+                : 'none',
+          overflowX: 'hidden',
+          overflowY: fillViewport || grid || stickyActions ? 'auto' : 'visible',
           minHeight: 0,
-          pr: grid || stickyActions ? 1 : 0,
-          pt: grid ? 0.5 : 0.25,
-          '&::-webkit-scrollbar': { width: '5px' },
+          px: grid ? 0.5 : 0,
+          py: grid ? 0.25 : 0.25,
+          scrollbarGutter: fillViewport || grid || stickyActions ? 'stable' : undefined,
+          '&::-webkit-scrollbar': { width: '8px' },
           '&::-webkit-scrollbar-track': { background: 'transparent' },
           '&::-webkit-scrollbar-thumb': {
-            background: grid ? '#C7D2FE' : '#cbd5e1',
-            borderRadius: '3px',
+            background: grid ? '#A5B4FC' : '#cbd5e1',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            background: grid ? '#818CF8' : '#94A3B8',
+          },
+          '& .MuiAutocomplete-root, & .MuiFormControl-root, & .MuiTextField-root': {
+            maxWidth: '100%',
+          },
+          '& .MuiOutlinedInput-root': {
+            maxWidth: '100%',
           },
         }}
       >
-        {fields.map((f, i) => renderField(f, i))}
+        {fields.map((f, i) => (
+          <CriteriaFieldItem
+            key={fieldKey(f)}
+            field={f}
+            value={(criteria as Record<string, unknown>)[f.fieldName]}
+            logicValue={(criteria as Record<string, unknown>)[`${f.fieldName}_LOGIC`]}
+            index={i}
+            inputSize={inputSize}
+            grid={grid}
+            showRequiredErrors={showRequiredErrors}
+            patchCriteria={patchCriteria}
+            t={tFn}
+          />
+        ))}
       </Box>
 
       <Box
         sx={{
-          mt: stickyActions ? 0 : grid ? 4 : 2.5,
-          pt: stickyActions ? 1.5 : 0,
+          mt: stickyActions || fillViewport ? 0.5 : grid ? 3 : 2.5,
+          pt: stickyActions || fillViewport ? 1.5 : 0,
           display: 'flex',
           flexDirection: grid ? 'row' : 'column',
           gap: grid ? 2 : 1.25,
           justifyContent: grid ? 'flex-end' : 'flex-start',
           alignItems: grid ? 'center' : 'stretch',
           flexShrink: 0,
-          ...(stickyActions
+          overflow: 'visible',
+          px: grid ? 1.5 : 0,
+          ...(stickyActions || fillViewport
             ? {
-                position: 'sticky',
-                bottom: 0,
-                bgcolor: 'background.paper',
-                borderTop: '1px solid',
-                borderColor: 'divider',
-                pb: 0.5,
+                position: 'relative',
+                bgcolor: fillViewport ? 'rgba(255,255,255,0.98)' : 'background.paper',
+                pb: 1.25,
                 zIndex: 2,
+                // Soft dock — no hard divider (user preference)
+                boxShadow: fillViewport
+                  ? '0 -10px 24px -12px rgba(15, 23, 42, 0.08)'
+                  : undefined,
               }
             : {}),
         }}
@@ -1044,11 +1288,16 @@ export function MaterialSearchFilters({
             grid
               ? {
                   minWidth: 130,
-                  color: 'text.secondary',
-                  borderColor: 'rgba(0,0,0,0.15)',
+                  height: 40,
+                  color: '#64748B',
+                  borderColor: '#E2E8F0',
+                  bgcolor: '#F8FAFC',
+                  fontWeight: 600,
+                  textTransform: 'none',
                   '&:hover': {
-                    borderColor: 'rgba(0,0,0,0.3)',
-                    bgcolor: 'rgba(0,0,0,0.03)',
+                    borderColor: '#CBD5E1',
+                    bgcolor: '#F1F5F9',
+                    color: '#334155',
                     transform: 'none',
                     boxShadow: 'none',
                   },
@@ -1068,12 +1317,27 @@ export function MaterialSearchFilters({
             title={
               isLoading
                 ? t('materialSearch.results.loading', 'טוען חומרים...')
-                : t('materialSearch.search', 'חיפוש')
+                : !canSubmit
+                  ? t(
+                      'materialSearch.filters.requiredBeforeSearch',
+                      'יש למלא את שדות החובה לפני חיפוש',
+                    )
+                  : t('materialSearch.search', 'חיפוש')
             }
             arrow
             placement="top"
           >
-            <span>
+            <Box
+              component="span"
+              sx={{
+                display: 'inline-flex',
+                // Padding so FAB ring/shadow is not clipped by card overflow
+                p: 1,
+                m: -0.5,
+                lineHeight: 0,
+                overflow: 'visible',
+              }}
+            >
               <Fab
                 type="submit"
                 color="primary"
@@ -1082,17 +1346,20 @@ export function MaterialSearchFilters({
                 aria-busy={isLoading || undefined}
                 disabled={isLoading}
                 sx={{
-                  width: 72,
-                  height: 72,
+                  width: 60,
+                  height: 60,
+                  flexShrink: 0,
                   background: 'linear-gradient(145deg, #6366F1 0%, #4F46E5 45%, #7C3AED 100%)',
-                  boxShadow:
-                    '0 8px 24px rgba(79, 70, 229, 0.4), 0 0 0 6px rgba(79, 70, 229, 0.1)',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                  boxShadow: !canSubmit && !isLoading
+                    ? '0 8px 22px rgba(79, 70, 229, 0.28), 0 0 0 5px rgba(245, 158, 11, 0.18)'
+                    : '0 8px 22px rgba(79, 70, 229, 0.35), 0 0 0 5px rgba(79, 70, 229, 0.1)',
+                  transition: 'transform 0.2s ease, box-shadow 0.2s ease, opacity 0.15s ease',
+                  opacity: !canSubmit && !isLoading ? 0.88 : 1,
                   '&:hover': {
                     background: 'linear-gradient(145deg, #4F46E5 0%, #4338CA 50%, #6D28D9 100%)',
                     boxShadow:
-                      '0 12px 32px rgba(79, 70, 229, 0.5), 0 0 0 8px rgba(79, 70, 229, 0.14)',
-                    transform: isLoading ? 'none' : 'translateY(-3px) scale(1.04)',
+                      '0 12px 28px rgba(79, 70, 229, 0.42), 0 0 0 6px rgba(79, 70, 229, 0.12)',
+                    transform: isLoading ? 'none' : 'translateY(-2px) scale(1.03)',
                   },
                   '&:active': {
                     transform: 'translateY(0) scale(0.98)',
@@ -1111,7 +1378,7 @@ export function MaterialSearchFilters({
                   <SearchIcon className="mdg-search-fab-icon" sx={{ fontSize: 36 }} />
                 )}
               </Fab>
-            </span>
+            </Box>
           </Tooltip>
         ) : (
           <Button
@@ -1132,6 +1399,7 @@ export function MaterialSearchFilters({
               fontWeight: 700,
               boxShadow: 'none',
               minHeight: 42,
+              opacity: !canSubmit && !isLoading ? 0.85 : 1,
               '&:hover': { boxShadow: '0 2px 8px rgba(79, 70, 229, 0.25)', transform: 'none' },
             }}
           >

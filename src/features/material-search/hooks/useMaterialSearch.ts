@@ -80,26 +80,6 @@ export function useOutputFieldsQuery() {
 }
 
 /**
- * Current user's plant/branch — runs once at app start.
- * GET /api/user/branch → `{ werks: "XXXX" }`
- */
-export function useUserBranchQuery() {
-  return useQuery({
-    queryKey: ['user', 'branch'],
-    queryFn: async () => {
-      try {
-        return await materialServiceInstance.getUserBranch();
-      } catch (error) {
-        logger.error('Error fetching user branch', error);
-        throw error;
-      }
-    },
-    staleTime: Infinity,
-    retry: 1,
-  });
-}
-
-/**
  * Paged / infinite-scroll variant of the material search.
  *
  * Uses OData-style $skip / $top supported by MockMaterialService (and the

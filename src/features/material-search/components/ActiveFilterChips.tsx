@@ -17,14 +17,22 @@ export function ActiveFilterChips() {
 
   const addChip = (key: string, label: string, onRemove: () => void) => {
     chips.push(
-      <Chip 
+      <Chip
         key={key}
         label={label}
         onDelete={onRemove}
         size="small"
         color="primary"
         variant="outlined"
-        sx={{ bgcolor: 'background.paper', fontWeight: 500 }}
+        sx={{
+          bgcolor: 'background.paper',
+          fontWeight: 600,
+          fontSize: '0.75rem',
+          borderColor: 'rgba(79,70,229,0.28)',
+          boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+          '& .MuiChip-deleteIcon': { color: 'primary.main', opacity: 0.7 },
+          '&:hover .MuiChip-deleteIcon': { opacity: 1 },
+        }}
       />
     );
   };
@@ -102,17 +110,20 @@ export function ActiveFilterChips() {
   if (chips.length === 0) return null;
 
   return (
-    <Box sx={{ 
-      display: 'flex', 
-      gap: 1, 
-      flexWrap: 'wrap', 
-      px: 2, 
-      py: 1.5, 
-      borderBottom: 1,
-      borderColor: 'divider',
-      bgcolor: 'background.default',
-      alignItems: 'center'
-    }}>
+    <Box
+      sx={{
+        display: 'flex',
+        gap: 0.75,
+        flexWrap: 'wrap',
+        px: 2,
+        py: 1.25,
+        borderBottom: 1,
+        borderColor: 'divider',
+        bgcolor: '#F8FAFC',
+        alignItems: 'center',
+        boxShadow: 'inset 0 -1px 0 rgba(79,70,229,0.04)',
+      }}
+    >
       {chips}
     </Box>
   );

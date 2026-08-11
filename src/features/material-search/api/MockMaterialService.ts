@@ -11,7 +11,7 @@ import { buildSearchRequest } from './buildSearchRequest';
 import { matchesMaterialFilters } from './matchMaterialFilters';
 import { mapMaterialToDetail } from './mapMaterialToDetail';
 import { MOCK_INPUT_FIELDS, MOCK_OUTPUT_FIELDS } from './mockFieldCatalog';
-import type { MaterialService, UserBranch } from './serviceContract';
+import type { MaterialService } from './serviceContract';
 
 export class MockMaterialService implements MaterialService {
   private materials: Material[];
@@ -33,13 +33,6 @@ export class MockMaterialService implements MaterialService {
       inputFields: MOCK_INPUT_FIELDS,
       outputFields: MOCK_OUTPUT_FIELDS,
     };
-  }
-
-  /** Mock user plant — first default plant (1000). */
-  async getUserBranch(): Promise<UserBranch | null> {
-    await this.simulateDelay();
-    logger.info('[MockMaterialService] getUserBranch() → 1000');
-    return { werks: '1000' };
   }
 
   async search(criteria: SearchCriteria): Promise<SearchResult> {
@@ -82,4 +75,13 @@ export class MockMaterialService implements MaterialService {
     }
   }
 
+  /** Mock MDG deep-link for local UI testing. */
+  async getMdgOpenUrl(materialNumber: string, werks?: string): Promise<string> {
+    await this.simulateDelay();
+    const q = new URLSearchParams({ matnr: materialNumber });
+    if (werks) q.set('werks', werks);
+    const url = `https://mdg.example.local/material?${q.toString()}`;
+    logger.info('[MockMaterialService] getMdgOpenUrl()', url);
+    return url;
+  }
 }

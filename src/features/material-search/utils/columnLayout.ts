@@ -38,7 +38,7 @@ export function headerClassName(field: OutputFieldDefinition): string {
  * Many columns → sum of min floors so H-scroll still works.
  */
 export function estimateScrollMinWidthPx(fields: OutputFieldDefinition[] | undefined): number {
-  const OPEN_HINT = 24;
+  const OPEN_HINT = 28;
   const body = (fields ?? []).filter((f) => (f.fieldName ?? '').toUpperCase() !== 'MATNR');
   if (body.length === 0) return 200;
 

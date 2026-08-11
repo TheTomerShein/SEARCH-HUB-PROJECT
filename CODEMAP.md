@@ -82,7 +82,7 @@ Last updated: 2026-08-06 (architecture split: types/service seams, credentials e
 
 | File | Role | What’s inside |
 |------|------|----------------|
-| `hooks/useMaterialSearch.ts` | React Query | Fields, infinite search, detail, **user branch** (`useUserBranchQuery`) |
+| `hooks/useMaterialSearch.ts` | React Query | Fields, infinite search, detail |
 | `hooks/useResultRowSelection.ts` | Checkbox selection | By `getResultRowId` |
 | `hooks/useInitDefaultFields.ts` | Seed field visibility | First visit / no URL override |
 | `hooks/useLayoutMode.ts` | Breakpoints + drawer | |

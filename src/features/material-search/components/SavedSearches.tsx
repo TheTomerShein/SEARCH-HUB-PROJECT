@@ -12,7 +12,6 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Typography,
   Tooltip,
   FormControlLabel,
   Checkbox,
@@ -44,6 +43,11 @@ export type ApplySavedSearchPayload = {
 
 type Props = {
   compact?: boolean;
+  /**
+   * `brand` = controls on indigo hero strip (frosted, light text accents).
+   * Only used with compact criteria-card header.
+   */
+  surface?: 'default' | 'brand';
   currentCriteria?: SearchCriteria;
   /** Current criteria-field visibility (for save + selection match). */
   currentSearchFieldKeys?: string[] | null;
@@ -92,10 +96,12 @@ function resolveDisplaySelectedId(
 
 export function SavedSearches({
   compact = false,
+  surface = 'default',
   currentCriteria,
   currentSearchFieldKeys = null,
   onApplySaved,
 }: Props) {
+  const onBrand = surface === 'brand';
   const { t } = useTranslation();
   const searchSubmitted = useRecoilValue(searchSubmittedState);
   const [savedSearches, setSavedSearches] = useRecoilState(savedSearchesState);
@@ -224,13 +230,7 @@ export function SavedSearches({
     : null;
 
   return (
-    <Box sx={{ mb: compact ? 0 : 3, width: compact ? 'auto' : '100%' }}>
-      {!compact && (
-        <Typography variant="subtitle2" fontWeight="bold" gutterBottom color="text.secondary">
-          {t('materialSearch.savedSearches.title')}
-        </Typography>
-      )}
-
+    <Box sx={{ mb: compact ? 0 : 1.5, width: compact ? 'auto' : '100%' }}>
       <Box
         sx={{
           display: 'flex',
@@ -252,8 +252,10 @@ export function SavedSearches({
                 shrink
                 sx={{
                   fontWeight: 700,
-                  color: 'primary.main',
-                  '&.Mui-focused': { color: 'primary.main' },
+                  color: onBrand ? '#C7D2FE' : 'primary.main',
+                  '&.Mui-focused': {
+                    color: onBrand ? '#E0E7FF' : 'primary.main',
+                  },
                 }}
               >
                 {t('materialSearch.savedSearches.currentLabel', 'חיפוש נוכחי')}
@@ -271,40 +273,71 @@ export function SavedSearches({
               displayEmpty
               notched={!!activeSavedSearch}
               sx={
-                compact
+                compact && onBrand
                   ? {
-                      color: '#334155',
-                      bgcolor: '#fff',
+                      // Glass indigo — matches brand strip, not stark white
+                      color: '#EEF2FF',
+                      bgcolor: 'rgba(30, 27, 75, 0.35)',
+                      borderRadius: '10px',
+                      backdropFilter: 'blur(10px)',
+                      WebkitBackdropFilter: 'blur(10px)',
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)',
                       '& .MuiSelect-select': {
-                        color: '#334155',
-                        fontWeight: activeSavedSearch ? 600 : 400,
+                        color: '#F8FAFF',
+                        fontWeight: activeSavedSearch ? 600 : 500,
                       },
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: displaySelectedId
-                          ? 'rgba(79,70,229,0.45)'
-                          : 'rgba(79,70,229,0.25)',
+                        borderColor: 'rgba(199, 210, 254, 0.35)',
                       },
                       '&:hover': {
-                        bgcolor: '#F8FAFC',
+                        bgcolor: 'rgba(49, 46, 129, 0.45)',
                         '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(79,70,229,0.45)',
+                          borderColor: 'rgba(199, 210, 254, 0.55)',
                         },
                       },
                       '&.Mui-focused': {
-                        bgcolor: '#fff',
-                        boxShadow: '0 0 0 3px rgba(79,70,229,0.12)',
-                        '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4F46E5' },
+                        bgcolor: 'rgba(49, 46, 129, 0.5)',
+                        boxShadow: '0 0 0 3px rgba(165, 180, 252, 0.28)',
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: '#A5B4FC',
+                        },
                       },
-                      '& .MuiSvgIcon-root': { color: '#64748B' },
+                      '& .MuiSvgIcon-root': { color: '#C7D2FE' },
                     }
-                  : activeSavedSearch
-                    ? { '& .MuiSelect-select': { fontWeight: 600 } }
-                    : {}
+                  : compact
+                    ? {
+                        color: '#334155',
+                        bgcolor: '#fff',
+                        '& .MuiSelect-select': {
+                          color: '#334155',
+                          fontWeight: activeSavedSearch ? 600 : 400,
+                        },
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: displaySelectedId
+                            ? 'rgba(79,70,229,0.45)'
+                            : 'rgba(79,70,229,0.25)',
+                        },
+                        '&:hover': {
+                          bgcolor: '#F8FAFC',
+                          '& .MuiOutlinedInput-notchedOutline': {
+                            borderColor: 'rgba(79,70,229,0.45)',
+                          },
+                        },
+                        '&.Mui-focused': {
+                          bgcolor: '#fff',
+                          boxShadow: '0 0 0 3px rgba(79,70,229,0.12)',
+                          '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4F46E5' },
+                        },
+                        '& .MuiSvgIcon-root': { color: '#64748B' },
+                      }
+                    : activeSavedSearch
+                      ? { '& .MuiSelect-select': { fontWeight: 600 } }
+                      : {}
               }
               renderValue={(selected) => {
                 if (!selected) {
                   return (
-                    <span style={{ color: '#94A3B8' }}>
+                    <span style={{ color: onBrand ? 'rgba(226,232,240,0.75)' : '#94A3B8' }}>
                       {t('materialSearch.savedSearches.select')}
                     </span>
                   );
@@ -392,19 +425,33 @@ export function SavedSearches({
           sx={{
             height: 40,
             whiteSpace: 'nowrap',
-            ...(compact
+            ...(compact && onBrand
               ? {
-                  color: '#4F46E5',
-                  borderColor: 'rgba(79,70,229,0.35)',
-                  bgcolor: '#fff',
+                  color: '#fff',
+                  borderColor: 'rgba(255,255,255,0.45)',
+                  bgcolor: 'rgba(255,255,255,0.12)',
+                  backdropFilter: 'blur(8px)',
+                  fontWeight: 600,
                   '&:hover': {
-                    borderColor: '#4F46E5',
-                    bgcolor: '#EEF2FF',
+                    borderColor: 'rgba(255,255,255,0.75)',
+                    bgcolor: 'rgba(255,255,255,0.2)',
                     transform: 'none',
                     boxShadow: 'none',
                   },
                 }
-              : {}),
+              : compact
+                ? {
+                    color: '#4F46E5',
+                    borderColor: 'rgba(79,70,229,0.35)',
+                    bgcolor: '#fff',
+                    '&:hover': {
+                      borderColor: '#4F46E5',
+                      bgcolor: '#EEF2FF',
+                      transform: 'none',
+                      boxShadow: 'none',
+                    },
+                  }
+                : {}),
           }}
         >
           {t('materialSearch.savedSearches.saveCurrent')}

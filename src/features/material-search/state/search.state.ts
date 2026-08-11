@@ -245,9 +245,10 @@ export const compareModeOpenState = atom<boolean>({
 });
 
 /**
- * Controls whether the search filter drawer is open on screens < lg.
+ * Criteria panel in results view (sidebar on lg+, drawer on smaller).
+ * true = visible; false = full-width results table.
  */
-export const filterDrawerOpenState = atom<boolean>({
-  key: 'filterDrawerOpen',
-  default: false,
+export const criteriaPanelOpenState = atom<boolean>({
+  key: 'criteriaPanelOpen',
+  default: true,
 });

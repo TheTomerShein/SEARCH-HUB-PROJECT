@@ -38,7 +38,10 @@ export function formatResultCell(
           if (e.key === ' ' || e.key === 'Enter') e.stopPropagation();
         }}
         title={t('materialSearch.actions.copyMatnr', 'לחץ להעתקת מספר חומר')}
-        aria-label={t('materialSearch.actions.copyMatnr', 'העתק מספר חומר')}
+        aria-label={t('materialSearch.actions.copyMatnrWithValue', {
+          matnr,
+          defaultValue: `העתק מספר חומר ${matnr}`,
+        })}
       >
         {matnr}
       </button>

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Box, Drawer } from '@mui/material';
 import { TopBar } from './TopBar';
 import { SearchSidebar } from './SearchSidebar';
@@ -17,8 +17,8 @@ const MaterialCompareView = lazy(() =>
 export function MaterialSearchScreen() {
   const {
     isLgUp,
-    filterDrawerOpen,
-    setFilterDrawerOpen,
+    criteriaPanelOpen,
+    setCriteriaPanelOpen,
   } = useLayoutMode();
 
   useInitDefaultFields();
@@ -26,19 +26,27 @@ export function MaterialSearchScreen() {
   const searchSubmitted = useRecoilValue(searchSubmittedState);
   const compareOpen = useRecoilValue(compareModeOpenState);
 
+  // Small screens: keep criteria as a drawer (closed until user opens).
+  useEffect(() => {
+    if (!isLgUp && searchSubmitted) {
+      setCriteriaPanelOpen(false);
+    }
+  }, [isLgUp, searchSubmitted, setCriteriaPanelOpen]);
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <TopBar />
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
         {!searchSubmitted ? (
-          /* First-screen hero (restored visual) */
+          /* Hero: card height follows fields; max = one viewport; fields scroll when capped */
           <Box
             sx={{
               flex: 1,
+              minHeight: 0,
               display: 'flex',
               justifyContent: 'center',
-              alignItems: 'flex-start',
-              overflowY: 'auto',
+              alignItems: 'center',
+              overflow: 'hidden',
               background: `
                 radial-gradient(ellipse at 20% 50%, rgba(79,70,229,0.18) 0%, transparent 60%),
                 radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.15) 0%, transparent 55%),
@@ -47,23 +55,33 @@ export function MaterialSearchScreen() {
               `,
               '&::before': {
                 content: '""',
-                position: 'fixed',
+                position: 'absolute',
                 inset: 0,
                 backgroundImage: 'radial-gradient(circle, rgba(79,70,229,0.08) 1px, transparent 1px)',
                 backgroundSize: '28px 28px',
                 pointerEvents: 'none',
                 zIndex: 0,
               },
+              position: 'relative',
             }}
           >
             <Box
               sx={{
                 width: '100%',
                 maxWidth: 1200,
-                px: { xs: 2, md: 4 },
-                py: { xs: 3, md: 5 },
+                // Fill pane height so card minHeight % works; card still max-capped
+                height: '100%',
+                maxHeight: '100%',
+                minHeight: 0,
+                px: { xs: 1.5, sm: 2, md: 3 },
+                py: { xs: 1.5, sm: 2, md: 2.5 },
                 position: 'relative',
                 zIndex: 1,
+                boxSizing: 'border-box',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                overflow: 'hidden',
               }}
             >
               <SearchSidebar centered />
@@ -72,12 +90,12 @@ export function MaterialSearchScreen() {
         ) : (
           <>
             {isLgUp ? (
-              <SearchSidebar />
+              criteriaPanelOpen ? <SearchSidebar /> : null
             ) : (
               <Drawer
                 anchor="left"
-                open={filterDrawerOpen}
-                onClose={() => setFilterDrawerOpen(false)}
+                open={criteriaPanelOpen}
+                onClose={() => setCriteriaPanelOpen(false)}
                 PaperProps={{ sx: { height: '100%' } }}
               >
                 <SearchSidebar />
