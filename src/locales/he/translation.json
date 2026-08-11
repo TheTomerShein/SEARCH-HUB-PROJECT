@@ -1,24 +1,42 @@
 {
   "app": {
-    "title": "חיפוש חומרים MDG"
+    "title": "שרלוק"
   },
   "materialSearch": {
     "search": "חיפוש",
+    "hero": {
+      "subtitle": "הגדר קריטריונים ולחץ חיפוש לצפייה בתוצאות"
+    },
     "filters": {
       "title": "סינון מתקדם",
       "materialNumber": "מספר חומר (MATNR)",
       "description": "תיאור חומר",
       "materialType": "סוג חומר (MTART)",
       "baseUnit": "יחידת מידה בסיסית",
-      "onlyActive": "הצג חומרים פעילים בלבד",
       "createdRange": "טווח תאריכי יצירה",
       "startDate": "מתאריך",
       "endDate": "עד תאריך",
-      "plants": "מפעלים (WERKS)",
-      "matchAny": "לפחות אחד (OR)",
-      "matchAll": "את כולם (AND)",
+      "plants": "זרוע משתמשת",
+      "matchAny": "לפחות אחד",
+      "matchAll": "את כולם",
       "clearFilters": "נקה סינונים",
-      "searchPlaceholder": "חיפוש חופשי..."
+      "searchPlaceholder": "חיפוש חופשי...",
+      "chipEnterHint": "Enter להוספה",
+      "multiManagerCount": "{{shown}} / {{total}} ערכים",
+      "multiManagerFiltered": "מסונן",
+      "multiManagerSearch": "חיפוש בערכים…",
+      "multiManagerEmpty": "אין ערכים",
+      "multiManagerNoMatch": "לא נמצאו תוצאות",
+      "multiManagerClearAll": "נקה הכל",
+      "multiManagerClearFiltered": "מחק מסוננים ({{count}})",
+      "multiManagerDone": "סיום",
+      "dirtyDraft": "שינויים לא הוחלו"
+    },
+    "selection": {
+      "barLabel": "פעולות על בחירה",
+      "count": "{{count}} נבחרו",
+      "uniqueMaterials": "{{count}} חומרים ייחודיים",
+      "clear": "נקה בחירה"
     },
     "savedSearches": {
       "title": "חיפושים שמורים",
@@ -27,25 +45,71 @@
       "saveTitle": "שמור חיפוש נוכחי",
       "nameLabel": "שם החיפוש",
       "cancel": "ביטול",
-      "save": "שמור"
+      "save": "שמור",
+      "setDefault": "הגדר כברירת מחדל בפתיחה",
+      "isDefault": "ברירת מחדל לפתיחת המסך",
+      "currentLabel": "חיפוש נוכחי"
     },
     "actions": {
       "exportExcel": "ייצוא לאקסל",
       "copyMaterials": "העתק חומרים",
-      "copyMaterialsSelected": "העתק חומרים ({{count}})",
-      "materialsCopied": "החומרים הועתקו ללוח בהצלחה!"
+      "copyMaterialsSelected": "העתק ({{count}})",
+      "materialsCopied": "החומרים הועתקו ללוח בהצלחה!",
+      "matnrCopied": "הועתק: {{matnr}}",
+      "copyMatnr": "לחץ להעתקת מספר חומר",
+      "linkCopied": "הקישור הועתק בהצלחה!",
+      "copyFailed": "ההעתקה נכשלה",
+      "exportDone": "הייצוא הושלם בהצלחה!",
+      "exportFailed": "הייצוא נכשל"
+    },
+    "transfer": {
+      "button": "דוח שגויים",
+      "buttonSelected": "דוח שגויים ({{count}})",
+      "selectedHint": "שליחת {{count}} חומרים נבחרים",
+      "allHint": "שליחת כל תוצאות החיפוש ({{count}})",
+      "opened": "דוח שגויים נפתח · {{count}} חומרים נשלחו",
+      "openFailed": "פתיחת דוח שגויים נכשלה"
     },
     "results": {
       "count": "נמצאו {{count}} רשומות",
       "loadedCount": "נטענו {{loaded}} מתוך {{total}}",
-      "empty": "לא נמצאו תוצאות התואמות את החיפוש.",
+      "empty": "לא נמצאו תוצאות התואמות את החיפוש",
+      "emptyHint": "נסה להרחיב את קריטריוני החיפוש, להסיר סינון, או לבדוק את מספר החומר.",
       "loading": "טוען חומרים...",
+      "loadingHint": "מריץ חיפוש מול השרת — רגע…",
+      "error": "שגיאה בטעינת תוצאות החיפוש",
+      "retry": "נסה שוב",
       "columns": {
         "materialNumber": "מספר חומר",
         "description": "תיאור",
         "materialType": "סוג חומר",
         "baseUnit": "יח' מידה",
-        "createdOn": "תאריך יצירה"
+        "createdOn": "תאריך יצירה",
+        "materialGroup": "קבוצת חומרים",
+        "division": "מגזר",
+        "plants": "מפעלים",
+        "orderUnit": "יח' הזמנה",
+        "grossWeight": "משקל ברוטו",
+        "netWeight": "משקל נטו",
+        "weightUnit": "יח' משקל",
+        "volume": "נפח",
+        "volumeUnit": "יח' נפח",
+        "ean": "ברקוד (EAN)",
+        "basicMaterial": "חומר בסיס",
+        "extMaterialGroup": "קבוצת חומר חיצונית",
+        "labOffice": "מעבדה / משרד",
+        "batchMgmt": "ניהול אצוות",
+        "priority": "עדיפות",
+        "storageLoc": "מיקום אחסון",
+        "length": "אורך",
+        "width": "רוחב",
+        "height": "גובה",
+        "dimUnit": "יח' מימד",
+        "minShelfLife": "חיי מדף מינ׳",
+        "totalShelfLife": "חיי מדף כוללים",
+        "tempCond": "תנאי טמפ׳",
+        "storageCond": "תנאי אחסון",
+        "containerReq": "דרישת מכל"
       }
     },
     "details": {
@@ -56,6 +120,13 @@
       "longDescription": "תיאור ארוך",
       "industrySector": "מגזר תעשייתי",
       "status": "סטטוס",
+      "globalStatus": "סטטוס גלובלי",
+      "zzMaterialType": "סוג חומר טור 06",
+      "managingBranch": "זרוע מנהלת",
+      "usingBranches": "זרועות משתמשות",
+      "noBranches": "אין זרועות",
+      "changeRequest": "בקשת שינוי",
+      "noChangeRequest": "אין בקשת שינוי פתוחה",
       "active": "פעיל",
       "deleted": "מסומן למחיקה",
       "createdBy": "נוצר על ידי",
@@ -74,21 +145,39 @@
         "C": "כימי (C)",
         "P": "פרמצבטי (P)",
         "E": "אלקטרוניקה (E)"
+      },
+      "priority": {
+        "1": "גבוהה (1)",
+        "2": "בינונית (2)",
+        "3": "נמוכה (3)"
       }
     },
     "settings": {
       "title": "הגדרות תצוגה",
+      "titleWithColumns": "הגדרות תצוגה · עמודות וסדר",
       "searchFields": "שדות לחיפוש",
       "outputColumns": "עמודות לתוצאה",
-      "resetDefaults": "שחזר לברירת מחדל"
+      "compareFields": "שדות להשוואה",
+      "chooseColumns": "בחירת עמודות",
+      "columnOrder": "סדר עמודות",
+      "dragHint": "גרור לשינוי סדר · או השתמש בחצים",
+      "moveUp": "הזז למעלה",
+      "moveDown": "הזז למטה",
+      "resetDefaults": "שחזר לברירת מחדל",
+      "clearSelection": "בטל בחירת הכל",
+      "cancel": "ביטול",
+      "apply": "שמור"
     },
+
     "compare": {
       "title": "השוואת חומרים",
       "button": "השוואה",
+      "selectHint": "בחר 2–4 חומרים להשוואה",
       "tooMany": "ניתן להשוות עד 4 חומרים בו-זמנית",
       "close": "סגור",
       "diffHighlight": "שדה שונה בין החומרים",
-      "field": "שדה"
+      "field": "שדה",
+      "noLocalData": "לא נמצאו נתונים להשוואה בתוצאות שנטענו. ודא שהחומרים מסומנים בטבלה."
     }
   }
 }

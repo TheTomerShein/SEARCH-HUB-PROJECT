@@ -6,8 +6,6 @@ import {
   Box,
   Typography,
   IconButton,
-  CircularProgress,
-  Chip,
   Tooltip,
   Slide,
   Table,
@@ -21,10 +19,23 @@ import { TransitionProps } from '@mui/material/transitions';
 import { Close as CloseIcon, CompareArrows as CompareIcon, InfoOutlined as InfoIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useRecoilState, useRecoilValue } from 'recoil';
-import { compareModeOpenState, checkedRowsState, activeCompareFieldsState } from '../state/search.state';
-import { useMaterialCompareQuery, useOutputFieldsQuery } from '../hooks/useMaterialSearch';
-import { CompareFieldSelector } from '../types/material';
-import { TFunction } from 'i18next';
+import {
+  compareModeOpenState,
+  checkedRowsState,
+  activeCompareFieldsState,
+  searchCriteriaState,
+  searchSubmittedState,
+} from '../state/search.state';
+import { useMaterialSearchInfiniteQuery, useOutputFieldsQuery } from '../hooks/useMaterialSearch';
+import {
+  Material,
+  fieldKey,
+  getRowFieldValue,
+  getResultRowId,
+  getRowMatnr,
+  matnrFromResultRowId,
+} from '../types/material';
+import { formatFieldValueAsString } from '../utils/formatFieldValue';
 
 const Transition = forwardRef(function Transition(
   props: TransitionProps & {
@@ -35,64 +46,67 @@ const Transition = forwardRef(function Transition(
   return <Slide direction="up" ref={ref} {...props} />;
 });
 
-// Modern subtle accent colors for top borders of each compared item
 const COLUMN_COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B'];
 
-function formatDate(iso: string): string {
-  if (!iso) return '—';
-  try {
-    return new Intl.DateTimeFormat('he-IL', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(iso));
-  } catch {
-    return iso ?? '—';
-  }
-}
+const longDate = { year: 'numeric' as const, month: 'short' as const, day: 'numeric' as const };
 
-const formatters: Record<string, (v: any, t: TFunction) => string> = {
-  MTART: (v, t) => t(`materialSearch.enums.materialType.${v}`),
-  MBRSH: (v, t) => t(`materialSearch.enums.industrySector.${v}`),
-  LVORM: (v, t) => v ? t('materialSearch.details.deleted') : t('materialSearch.details.active'),
-  ERSDA: (v) => formatDate(v),
-  LAEDA: (v) => formatDate(v),
-};
+/** Resolve up to 4 unique materials from checked rows using already-loaded search pages. */
+function pickMaterialsFromResults(
+  checkedRows: string[],
+  loadedRows: Material[],
+): Material[] {
+  const byRowId = new Map(loadedRows.map((m) => [getResultRowId(m), m]));
+  const seenMatnr = new Set<string>();
+  const out: Material[] = [];
+
+  for (const id of checkedRows) {
+    const matnr = matnrFromResultRowId(id);
+    if (!matnr || seenMatnr.has(matnr)) continue;
+    seenMatnr.add(matnr);
+
+    const row =
+      byRowId.get(id) ??
+      loadedRows.find((m) => getRowMatnr(m) === matnr || m.MATNR === matnr);
+    if (row) out.push(row);
+    if (out.length >= 4) break;
+  }
+  return out;
+}
 
 export function MaterialCompareView() {
   const { t } = useTranslation();
   const [open, setOpen] = useRecoilState(compareModeOpenState);
   const checkedRows = useRecoilValue(checkedRowsState);
   const activeCompareFields = useRecoilValue(activeCompareFieldsState);
+  const criteria = useRecoilValue(searchCriteriaState);
+  const searchSubmitted = useRecoilValue(searchSubmittedState);
   const { data: outputFields } = useOutputFieldsQuery();
 
-  const matnrsToCompare = useMemo(() => checkedRows.slice(0, 4), [checkedRows]);
+  // Same infinite-query cache as the results table — no extra compare API.
+  const { data: searchData } = useMaterialSearchInfiniteQuery(criteria, searchSubmitted);
+
+  const loadedRows = useMemo(
+    () => searchData?.pages.flatMap((p) => p.materials) ?? [],
+    [searchData],
+  );
+
+  const allMaterials = useMemo(
+    () => (open ? pickMaterialsFromResults(checkedRows, loadedRows) : []),
+    [open, checkedRows, loadedRows],
+  );
 
   const fieldsToCompare = useMemo(() => {
     if (!outputFields) return [];
     if (!activeCompareFields) return outputFields;
-    return outputFields.filter(f => activeCompareFields.includes(f.field_name));
+    return outputFields.filter((f) => activeCompareFields.includes(fieldKey(f)));
   }, [outputFields, activeCompareFields]);
 
-  const fieldsToFetch = useMemo(() => {
-    const f: CompareFieldSelector[] = fieldsToCompare.map(f => ({ table_name: f.table_name, field_name: f.field_name }));
-    const hasField = (name: string) => f.some(field => field.field_name === name);
-    if (!hasField('LONG_TEXT')) f.push({ table_name: 'STXL', field_name: 'LONG_TEXT' });
-    if (!hasField('MAKTX')) f.push({ table_name: 'MAKT', field_name: 'MAKTX' });
-    if (!hasField('LVORM')) f.push({ table_name: 'MARA', field_name: 'LVORM' });
-    return f;
-  }, [fieldsToCompare]);
-
-  const { data: materialsData, isLoading } = useMaterialCompareQuery(
-    open ? matnrsToCompare : [], 
-    open ? fieldsToFetch : []
-  );
-
-  const allMaterials = useMemo(() => {
-    if (!materialsData) return Array(matnrsToCompare.length).fill(null);
-    return matnrsToCompare.map(matnr => materialsData.find(m => m.MATNR === matnr) || null);
-  }, [materialsData, matnrsToCompare]);
-
   const hasLongTextDiff = useMemo(() => {
-    const allTexts = allMaterials.map(m => m?.LONG_TEXT ?? '').filter(Boolean);
+    const allTexts = allMaterials.map((m) => m.LONG_TEXT ?? '').filter(Boolean);
     return allTexts.length > 1 && new Set(allTexts).size > 1;
   }, [allMaterials]);
+
+  const colCount = Math.max(allMaterials.length, 1);
 
   return (
     <Dialog
@@ -102,7 +116,6 @@ export function MaterialCompareView() {
       TransitionComponent={Transition}
       PaperProps={{ sx: { bgcolor: '#f8fafc' } }}
     >
-      {/* ── Title bar ── */}
       <DialogTitle
         sx={{
           display: 'flex',
@@ -113,10 +126,20 @@ export function MaterialCompareView() {
           py: 2,
           px: 3,
           boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)',
-          zIndex: 50, // Above table headers
+          zIndex: 50,
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#eff6ff', color: '#2563eb', p: 1, borderRadius: 2 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: '#eff6ff',
+            color: '#2563eb',
+            p: 1,
+            borderRadius: 2,
+          }}
+        >
           <CompareIcon />
         </Box>
         <Typography variant="h6" fontWeight="700" sx={{ flex: 1, color: '#0f172a' }}>
@@ -142,8 +165,8 @@ export function MaterialCompareView() {
         </Box>
 
         <Tooltip title={t('materialSearch.compare.close')}>
-          <IconButton 
-            onClick={() => setOpen(false)} 
+          <IconButton
+            onClick={() => setOpen(false)}
             id="compare-close-btn"
             sx={{ bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}
           >
@@ -153,16 +176,28 @@ export function MaterialCompareView() {
       </DialogTitle>
 
       <DialogContent sx={{ p: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {isLoading ? (
-          <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 2 }}>
-            <CircularProgress size={48} thickness={4} sx={{ color: '#3b82f6' }} />
+        {allMaterials.length === 0 ? (
+          <Box
+            sx={{
+              flex: 1,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              p: 4,
+            }}
+          >
+            <Typography color="text.secondary">
+              {t(
+                'materialSearch.compare.noLocalData',
+                'לא נמצאו נתונים להשוואה בתוצאות שנטענו. ודא שהחומרים מסומנים בטבלה.',
+              )}
+            </Typography>
           </Box>
         ) : (
           <TableContainer component={Box} sx={{ flex: 1, overflow: 'auto', bgcolor: '#ffffff' }}>
             <Table stickyHeader sx={{ minWidth: 800, tableLayout: 'fixed' }}>
               <TableHead>
                 <TableRow>
-                  {/* Top-left corner (sticky) */}
                   <TableCell
                     sx={{
                       position: 'sticky',
@@ -177,17 +212,21 @@ export function MaterialCompareView() {
                       verticalAlign: 'bottom',
                     }}
                   >
-                    <Typography variant="overline" fontWeight="700" color="#475569" sx={{ letterSpacing: 1 }}>
+                    <Typography
+                      variant="overline"
+                      fontWeight="700"
+                      color="#475569"
+                      sx={{ letterSpacing: 1 }}
+                    >
                       {t('materialSearch.compare.field')}
                     </Typography>
                   </TableCell>
 
-                  {/* Material Headers */}
                   {allMaterials.map((material, i) => {
                     const headerColor = COLUMN_COLORS[i % COLUMN_COLORS.length];
                     return (
                       <TableCell
-                        key={material ? material.MATNR : `empty-${i}`}
+                        key={getResultRowId(material) || material.MATNR || `col-${i}`}
                         sx={{
                           top: 0,
                           zIndex: 20,
@@ -195,39 +234,29 @@ export function MaterialCompareView() {
                           borderBottom: '2px solid #cbd5e1',
                           borderTop: `4px solid ${headerColor}`,
                           p: 3,
-                          width: `${100 / Math.max(matnrsToCompare.length, 1)}%`,
+                          width: `${100 / colCount}%`,
                           verticalAlign: 'top',
                         }}
                       >
-                        {material ? (
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                            <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                              {t('materialSearch.results.columns.materialNumber')}
-                            </Typography>
-                            <Typography variant="h6" fontWeight="800" sx={{ color: '#0f172a' }}>
-                              {material.MATNR}
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: '#475569', minHeight: 40 }}>
-                              {material.MAKTX}
-                            </Typography>
-                            <Box sx={{ mt: 1 }}>
-                              <Chip
-                                label={material.LVORM ? t('materialSearch.details.deleted') : t('materialSearch.details.active')}
-                                size="small"
-                                sx={{
-                                  bgcolor: material.LVORM ? '#fee2e2' : '#dcfce7',
-                                  color: material.LVORM ? '#991b1b' : '#166534',
-                                  fontWeight: 700,
-                                  fontSize: '0.7rem',
-                                  height: 24,
-                                  border: `1px solid ${material.LVORM ? '#f87171' : '#4ade80'}`,
-                                }}
-                              />
-                            </Box>
-                          </Box>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary">—</Typography>
-                        )}
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: '#64748b',
+                              fontWeight: 600,
+                              textTransform: 'uppercase',
+                              letterSpacing: 0.5,
+                            }}
+                          >
+                            {t('materialSearch.results.columns.materialNumber')}
+                          </Typography>
+                          <Typography variant="h6" fontWeight="800" sx={{ color: '#0f172a' }}>
+                            {material.MATNR}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: '#475569', minHeight: 40 }}>
+                            {material.MAKTX || '—'}
+                          </Typography>
+                        </Box>
                       </TableCell>
                     );
                   })}
@@ -235,21 +264,26 @@ export function MaterialCompareView() {
               </TableHead>
 
               <TableBody>
-                {/* Data rows */}
                 {fieldsToCompare.map((field) => {
-                  const allRawVals = allMaterials.map((m) => (m ? String((m as any)[field.field_name] ?? '') : null)).filter(Boolean);
+                  const allRawVals = allMaterials
+                    .map((m) => {
+                      const v = getRowFieldValue(m, field);
+                      return v != null && v !== '' ? String(v) : null;
+                    })
+                    .filter(Boolean);
                   const isDiff = allRawVals.length > 1 && new Set(allRawVals).size > 1;
 
                   return (
-                    <TableRow 
-                      key={field.field_name} 
-                      hover 
-                      sx={{ 
-                        '&:hover .MuiTableCell-root': { bgcolor: isDiff ? '#fef08a' : '#f1f5f9' },
-                        '&:hover .sticky-label': { bgcolor: '#e2e8f0' }
+                    <TableRow
+                      key={fieldKey(field)}
+                      hover
+                      sx={{
+                        '&:hover .MuiTableCell-root': {
+                          bgcolor: isDiff ? '#fef08a' : '#f1f5f9',
+                        },
+                        '&:hover .sticky-label': { bgcolor: '#e2e8f0' },
                       }}
                     >
-                      {/* Row Label (Sticky) */}
                       <TableCell
                         className="sticky-label"
                         sx={{
@@ -265,15 +299,12 @@ export function MaterialCompareView() {
                           transition: 'background-color 0.2s',
                         }}
                       >
-                        {t(field.hebrew_desc)}
+                        {t(field.hebrewDesc)}
                       </TableCell>
 
-                      {/* Values */}
                       {allMaterials.map((material, i) => {
-                        const rawVal = material ? (material as any)[field.field_name] : null;
-                        const displayVal = material 
-                          ? (formatters[field.field_name] ? formatters[field.field_name](rawVal, t) : String(rawVal ?? '—'))
-                          : '—';
+                        const rawVal = getRowFieldValue(material, field);
+                        const displayVal = formatFieldValueAsString(field, rawVal, t, longDate);
 
                         return (
                           <TableCell
@@ -281,7 +312,8 @@ export function MaterialCompareView() {
                             sx={{
                               bgcolor: isDiff ? '#fefce8' : 'transparent',
                               borderBottom: '1px solid #e2e8f0',
-                              borderInlineEnd: i < allMaterials.length - 1 ? '1px solid #f1f5f9' : 'none',
+                              borderInlineEnd:
+                                i < allMaterials.length - 1 ? '1px solid #f1f5f9' : 'none',
                               p: 2.5,
                               color: isDiff ? '#854d0e' : '#334155',
                               fontWeight: isDiff ? 600 : 400,
@@ -297,12 +329,13 @@ export function MaterialCompareView() {
                   );
                 })}
 
-                {/* Long description row */}
-                <TableRow 
-                  hover 
-                  sx={{ 
-                    '&:hover .MuiTableCell-root': { bgcolor: hasLongTextDiff ? '#fef08a' : '#f1f5f9' },
-                    '&:hover .sticky-label': { bgcolor: '#e2e8f0' }
+                <TableRow
+                  hover
+                  sx={{
+                    '&:hover .MuiTableCell-root': {
+                      bgcolor: hasLongTextDiff ? '#fef08a' : '#f1f5f9',
+                    },
+                    '&:hover .sticky-label': { bgcolor: '#e2e8f0' },
                   }}
                 >
                   <TableCell
@@ -329,14 +362,23 @@ export function MaterialCompareView() {
                       sx={{
                         bgcolor: hasLongTextDiff ? '#fefce8' : 'transparent',
                         borderBottom: '1px solid #e2e8f0',
-                        borderInlineEnd: i < allMaterials.length - 1 ? '1px solid #f1f5f9' : 'none',
+                        borderInlineEnd:
+                          i < allMaterials.length - 1 ? '1px solid #f1f5f9' : 'none',
                         p: 2.5,
                         verticalAlign: 'top',
                         transition: 'background-color 0.2s',
                       }}
                     >
-                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: hasLongTextDiff ? '#854d0e' : '#475569', fontSize: '0.85rem', lineHeight: 1.6 }}>
-                        {material?.LONG_TEXT ?? '—'}
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          whiteSpace: 'pre-wrap',
+                          color: hasLongTextDiff ? '#854d0e' : '#475569',
+                          fontSize: '0.85rem',
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {material.LONG_TEXT ?? '—'}
                       </Typography>
                     </TableCell>
                   ))}
