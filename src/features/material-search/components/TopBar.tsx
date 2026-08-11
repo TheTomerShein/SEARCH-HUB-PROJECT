@@ -193,7 +193,7 @@ export function TopBar() {
     }
   }, [resolveMatnrs, runErrorsReportTransfer, showToast, t]);
 
-  const handleClearFilters = () => clearSearch();
+  const handleClearFilters = () => clearSearch({ clearSelection: true });
 
   const clearSelection = () => setCheckedRows([]);
 

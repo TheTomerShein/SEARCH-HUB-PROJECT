@@ -8,6 +8,7 @@ import {
   searchSubmittedState,
   savedSearchesState,
   defaultSavedSearchIdState,
+  type SavedSearch,
 } from '../state/search.state';
 import { useSearchFieldsQuery, useUserBranchQuery } from '../hooks/useMaterialSearch';
 import { useIsFetching } from '@tanstack/react-query';
@@ -17,18 +18,8 @@ import { SavedSearches, type ApplySavedSearchPayload } from './SavedSearches';
 import { SearchCriteria, fieldKey } from '../types/material';
 import { useClearSearch } from '../hooks/useClearSearch';
 import { SherlokBrand } from '../../../components/SherlokBrand';
-import {
-  shouldAutoApplyDefaultSavedSearch,
-  markDefaultSavedSearchApplied,
-} from '../utils/sessionDefaultSavedSearch';
-
-function criteriaFingerprint(c: SearchCriteria): string {
-  try {
-    return JSON.stringify(c, Object.keys(c).sort());
-  } catch {
-    return '';
-  }
-}
+import { isDefaultAutoSeedSuppressed } from '../utils/sessionDefaultSavedSearch';
+import { criteriaFingerprint } from '../utils/criteriaFingerprint';
 
 function werksListFromCriteria(c: SearchCriteria): string[] {
   const w = c.WERKS as unknown;
@@ -56,7 +47,6 @@ function resolveVisibleSearchFields<T extends { tableName: string; fieldName: st
     const f =
       byKey.get(raw) ??
       byName.get(raw.toUpperCase()) ??
-      // last segment of "TABLE-FIELD" style keys
       byName.get(raw.includes('-') ? raw.slice(raw.lastIndexOf('-') + 1).toUpperCase() : '');
     if (!f) continue;
     const k = fieldKey(f);
@@ -65,6 +55,15 @@ function resolveVisibleSearchFields<T extends { tableName: string; fieldName: st
     out.push(f);
   }
   return out;
+}
+
+function resolveDefaultSavedSearch(
+  defaultSearchId: string,
+  savedSearches: SavedSearch[],
+  searchSubmitted: boolean,
+): SavedSearch | null {
+  if (searchSubmitted || !defaultSearchId || isDefaultAutoSeedSuppressed()) return null;
+  return savedSearches.find((s) => s.id === defaultSearchId) ?? null;
 }
 
 export function SearchSidebar({ centered = false }: { centered?: boolean }) {
@@ -76,60 +75,51 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
   const defaultSearchId = useRecoilValue(defaultSavedSearchIdState);
   const clearSearch = useClearSearch();
 
-  /**
-   * Starred default — only for first paint of this page load.
-   * Returning from results remounts this component; do not re-seed default then.
-   */
-  const userDefaultSearch = useMemo(() => {
-    if (searchSubmitted || !defaultSearchId) return null;
-    if (!shouldAutoApplyDefaultSavedSearch()) return null;
-    return savedSearches.find((s) => s.id === defaultSearchId) ?? null;
-  }, [searchSubmitted, defaultSearchId, savedSearches]);
+  const defaultToSeed = resolveDefaultSavedSearch(defaultSearchId, savedSearches, searchSubmitted);
 
-  const [draftCriteria, setDraftCriteria] = useState<SearchCriteria>(() => {
-    if (userDefaultSearch) {
-      markDefaultSavedSearchApplied();
-      return { ...userDefaultSearch.criteria };
-    }
-    // Returning from results: keep last applied criteria (not empty + default)
-    return { ...appliedCriteria };
-  });
+  // Atom already holds default criteria on load (urlSyncEffect). Draft mirrors it.
+  const [draftCriteria, setDraftCriteria] = useState<SearchCriteria>(() => ({
+    ...(defaultToSeed ? defaultToSeed.criteria : appliedCriteria),
+  }));
   /** Bumps when a saved search is applied → remount filter form with new values/fields. */
   const [formEpoch, setFormEpoch] = useState(0);
-  const didApplyUserDefaultFields = useRef(false);
-  /** Skip first applied→draft sync so user default seed is not wiped by atom default. */
-  const skipAppliedSyncOnce = useRef(!!userDefaultSearch);
+  /**
+   * Block branch WERKS injection when:
+   * - default/saved active
+   * - user cleared this load
+   * - results/sidebar remount with existing applied criteria
+   */
+  const suppressWerksPrefill = useRef(
+    !!defaultToSeed ||
+      isDefaultAutoSeedSuppressed() ||
+      searchSubmitted ||
+      Object.keys(appliedCriteria).length > 0,
+  );
+  const didApplyDefaultFields = useRef(false);
 
-  // Once the user has searched (or landed with results), never auto-apply default again.
+  // Keep draft in sync with applied atom (clear, search submit, URL, default seed).
   useEffect(() => {
-    if (searchSubmitted) markDefaultSavedSearchApplied();
-  }, [searchSubmitted]);
-
-  useEffect(() => {
-    if (skipAppliedSyncOnce.current) {
-      skipAppliedSyncOnce.current = false;
-      return;
-    }
     setDraftCriteria(appliedCriteria);
   }, [appliedCriteria]);
 
-  // Field visibility from default saved search — only when we actually seeded it this load.
+  // Field visibility from default saved search on open (once per mount when seeding).
   useEffect(() => {
-    if (didApplyUserDefaultFields.current) return;
-    didApplyUserDefaultFields.current = true;
-    if (!userDefaultSearch) return;
-    if (!Object.prototype.hasOwnProperty.call(userDefaultSearch, 'searchFieldKeys')) return;
+    if (didApplyDefaultFields.current) return;
+    if (!defaultToSeed) return;
+    didApplyDefaultFields.current = true;
+    if (!Object.prototype.hasOwnProperty.call(defaultToSeed, 'searchFieldKeys')) return;
     setActiveSearchFields(
-      userDefaultSearch.searchFieldKeys == null
-        ? null
-        : [...userDefaultSearch.searchFieldKeys],
+      defaultToSeed.searchFieldKeys == null ? null : [...defaultToSeed.searchFieldKeys],
     );
-  }, [userDefaultSearch, setActiveSearchFields]);
+  }, [defaultToSeed, setActiveSearchFields]);
 
-  // Pre-fill WERKS from GET /api/user/branch when form has no plant yet
-  // (does not override URL criteria or a saved search that already sets WERKS).
+  // Pre-fill WERKS from branch API only on true blank first-open (never after clear/default/results).
   const { data: userBranch } = useUserBranchQuery();
   useEffect(() => {
+    if (suppressWerksPrefill.current) return;
+    if (isDefaultAutoSeedSuppressed()) return;
+    if (searchSubmitted) return;
+    if (defaultSearchId) return; // default owns the form this open
     const werks = userBranch?.werks?.trim();
     if (!werks) return;
     if (werksListFromCriteria(draftCriteria).length > 0) return;
@@ -140,18 +130,16 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
       return { ...prev, WERKS: [werks] };
     });
     setFormEpoch((n) => n + 1);
-  }, [userBranch, draftCriteria, appliedCriteria]);
+  }, [userBranch, draftCriteria, appliedCriteria, searchSubmitted, defaultSearchId]);
 
   const isDirty =
     searchSubmitted &&
     criteriaFingerprint(draftCriteria) !== criteriaFingerprint(appliedCriteria);
 
-  // First page (or new criteria key) with no cached data yet — mock delay or real API
   const isFetchingCount = useIsFetching({
     queryKey: ['materials', 'search', 'infinite'],
     predicate: (q) => q.state.data === undefined && q.state.fetchStatus === 'fetching',
   });
-  // Any in-flight search (incl. background refetch of current criteria)
   const isFetchingAny = useIsFetching({
     queryKey: ['materials', 'search', 'infinite'],
     predicate: (q) => q.state.fetchStatus === 'fetching',
@@ -167,17 +155,13 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
 
   const handleApplySaved = useCallback(
     (payload: ApplySavedSearchPayload) => {
-      // 1) Values first (new object so React always sees a change)
+      suppressWerksPrefill.current = true;
       setDraftCriteria({ ...payload.criteria });
-
-      // 2) Field visibility (when saved snapshot included it)
       if (payload.searchFieldKeys !== undefined) {
         setActiveSearchFields(
           payload.searchFieldKeys == null ? null : [...payload.searchFieldKeys],
         );
       }
-
-      // 3) Force MaterialSearchFilters remount so every input re-binds
       setFormEpoch((n) => n + 1);
     },
     [setActiveSearchFields],
@@ -190,7 +174,7 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
 
   const handleClear = () => {
     clearSearch({ clearSelection: true });
-    setDraftCriteria(defaultCriteria);
+    setDraftCriteria({ ...defaultCriteria });
     setFormEpoch((n) => n + 1);
   };
 
@@ -261,7 +245,7 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
     );
   }
 
-  // ── Hero / centered mode (original first-screen look) ──────────────────
+  // ── Hero / centered mode ───────────────────────────────────────────────
   return (
     <Box
       sx={{
@@ -281,7 +265,6 @@ export function SearchSidebar({ centered = false }: { centered?: boolean }) {
     >
       <Box
         sx={{
-          // Soft blue–indigo wash (same family as primary #4F46E5), not plain white
           background: `
             radial-gradient(ellipse 80% 120% at 0% 0%, rgba(99, 102, 241, 0.14) 0%, transparent 55%),
             radial-gradient(ellipse 70% 100% at 100% 100%, rgba(59, 130, 246, 0.12) 0%, transparent 50%),

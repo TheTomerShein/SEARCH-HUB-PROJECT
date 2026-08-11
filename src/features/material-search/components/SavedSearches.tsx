@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Box,
   Button,
@@ -14,6 +14,8 @@ import {
   TextField,
   Typography,
   Tooltip,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -30,10 +32,8 @@ import {
   type SavedSearch,
 } from '../state/search.state';
 import { SearchCriteria } from '../types/material';
-import {
-  shouldAutoApplyDefaultSavedSearch,
-  markDefaultSavedSearchApplied,
-} from '../utils/sessionDefaultSavedSearch';
+import { isDefaultAutoSeedSuppressed } from '../utils/sessionDefaultSavedSearch';
+import { criteriaFingerprint, isEmptyCriteria } from '../utils/criteriaFingerprint';
 
 /** Payload applied to the criteria form (values + optional field visibility). */
 export type ApplySavedSearchPayload = {
@@ -41,16 +41,6 @@ export type ApplySavedSearchPayload = {
   /** undefined = leave current field visibility; null = all fields; string[] = those keys */
   searchFieldKeys?: string[] | null;
 };
-
-/** Stable compare — ignores key insertion order (JSON.stringify alone is flaky). */
-function criteriaFingerprint(c: SearchCriteria | undefined | null): string {
-  if (!c) return '';
-  try {
-    return JSON.stringify(c, Object.keys(c).sort());
-  } catch {
-    return '';
-  }
-}
 
 type Props = {
   compact?: boolean;
@@ -60,6 +50,45 @@ type Props = {
   /** Fill form + remount parent; never runs search. */
   onApplySaved: (payload: ApplySavedSearchPayload) => void;
 };
+
+/**
+ * Which saved search owns the current form — exact criteria match only.
+ * Default shows because parent seeds draft before this Select mounts (fields loader).
+ */
+function resolveDisplaySelectedId(
+  currentCriteria: SearchCriteria | undefined,
+  selectedSearchId: string,
+  savedSearches: SavedSearch[],
+  defaultSearchId: string,
+): string {
+  const draftFp = criteriaFingerprint(currentCriteria);
+  if (isEmptyCriteria(currentCriteria)) {
+    // Empty form matches only a saved search that is also empty
+    if (selectedSearchId) {
+      const sel = savedSearches.find((s) => s.id === selectedSearchId);
+      if (sel && isEmptyCriteria(sel.criteria)) return selectedSearchId;
+    }
+    if (defaultSearchId && !isDefaultAutoSeedSuppressed()) {
+      const d = savedSearches.find((s) => s.id === defaultSearchId);
+      if (d && isEmptyCriteria(d.criteria)) return d.id;
+    }
+    return '';
+  }
+
+  if (selectedSearchId) {
+    const sel = savedSearches.find((s) => s.id === selectedSearchId);
+    if (sel && draftFp === criteriaFingerprint(sel.criteria)) return selectedSearchId;
+  }
+
+  // Prefer default id when multiple saved share same criteria
+  if (defaultSearchId) {
+    const d = savedSearches.find((s) => s.id === defaultSearchId);
+    if (d && draftFp === criteriaFingerprint(d.criteria)) return d.id;
+  }
+
+  const match = savedSearches.find((s) => criteriaFingerprint(s.criteria) === draftFp);
+  return match?.id ?? '';
+}
 
 export function SavedSearches({
   compact = false,
@@ -74,22 +103,14 @@ export function SavedSearches({
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newSearchName, setNewSearchName] = useState('');
-  /** Highlight user default on first open (criteria pre-filled by SearchSidebar). */
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
+
+  // Track user pick; default id is always available from Recoil for display.
   const [selectedSearchId, setSelectedSearchId] = useState<string>(() => {
-    if (searchSubmitted || !defaultSearchId) return '';
+    if (searchSubmitted || !defaultSearchId || isDefaultAutoSeedSuppressed()) return '';
     return savedSearches.some((s) => s.id === defaultSearchId) ? defaultSearchId : '';
   });
-  const didApplyDefault = useRef(false);
-  /** Fingerprint of selected saved criteria — only clear select when draft diverges. */
-  const selectedCriteriaFp = useRef<string>(
-    (() => {
-      if (searchSubmitted || !defaultSearchId) return '';
-      const s = savedSearches.find((x) => x.id === defaultSearchId);
-      return s ? criteriaFingerprint(s.criteria) : '';
-    })(),
-  );
-
-  const defaultSearch = savedSearches.find((s) => s.id === defaultSearchId) ?? null;
+  const didBackupDefaultApply = useRef(false);
 
   const applySavedSearch = useCallback(
     (search: SavedSearch) => {
@@ -101,50 +122,45 @@ export function SavedSearches({
           search.searchFieldKeys == null ? null : [...search.searchFieldKeys];
       }
       onApplySaved(payload);
-      selectedCriteriaFp.current = criteriaFingerprint(search.criteria);
       setSelectedSearchId(search.id);
     },
     [onApplySaved],
   );
 
-  // Auto-apply starred default only once per full page load (not when returning from results).
+  // Once: ensure Select highlights default when form already matches (atom seed).
+  // Do not re-push default after user edits/empties fields.
   useEffect(() => {
-    if (didApplyDefault.current) return;
-    if (searchSubmitted || !shouldAutoApplyDefaultSavedSearch()) {
-      didApplyDefault.current = true;
-      return;
-    }
-    if (!defaultSearchId) {
-      didApplyDefault.current = true;
-      markDefaultSavedSearchApplied();
-      return;
-    }
+    if (didBackupDefaultApply.current) return;
+    if (searchSubmitted || isDefaultAutoSeedSuppressed()) return;
+    if (!defaultSearchId) return;
     const search = savedSearches.find((s) => s.id === defaultSearchId);
-    if (!search) {
-      didApplyDefault.current = true;
-      markDefaultSavedSearchApplied();
+    if (!search) return;
+
+    const draftFp = criteriaFingerprint(currentCriteria);
+    const savedFp = criteriaFingerprint(search.criteria);
+
+    if (draftFp === savedFp) {
+      didBackupDefaultApply.current = true;
+      setSelectedSearchId(search.id);
       return;
     }
-    didApplyDefault.current = true;
-    markDefaultSavedSearchApplied();
-    applySavedSearch(search);
-  }, [searchSubmitted, defaultSearchId, savedSearches, applySavedSearch]);
+    // Only force-apply if form still empty (atom seed raced / missed)
+    if (isEmptyCriteria(currentCriteria)) {
+      didBackupDefaultApply.current = true;
+      applySavedSearch(search);
+    }
+  }, [searchSubmitted, defaultSearchId, savedSearches, currentCriteria, applySavedSearch]);
 
-  // Keep Select on the default while draft still matches that saved criteria.
-  // (Field-visibility races used to clear selection even when values were correct.)
+  // When user edits away from the active saved snapshot → drop selection id.
   useEffect(() => {
-    if (!selectedSearchId || !currentCriteria) return;
+    if (!selectedSearchId) return;
     const active = savedSearches.find((s) => s.id === selectedSearchId);
     if (!active) {
       setSelectedSearchId('');
-      selectedCriteriaFp.current = '';
       return;
     }
-    const draftFp = criteriaFingerprint(currentCriteria);
-    const savedFp = criteriaFingerprint(active.criteria);
-    if (draftFp !== savedFp && draftFp !== selectedCriteriaFp.current) {
+    if (criteriaFingerprint(currentCriteria) !== criteriaFingerprint(active.criteria)) {
       setSelectedSearchId('');
-      selectedCriteriaFp.current = '';
     }
   }, [currentCriteria, selectedSearchId, savedSearches]);
 
@@ -161,8 +177,10 @@ export function SavedSearches({
 
     setSavedSearches((prev) => [...prev, newSearch]);
     setSelectedSearchId(newSearch.id);
+    if (saveAsDefault) setDefaultSearchId(newSearch.id);
     setDialogOpen(false);
     setNewSearchName('');
+    setSaveAsDefault(false);
   };
 
   const handleApplySearch = (id: string) => {
@@ -181,31 +199,25 @@ export function SavedSearches({
 
   const handleSetDefault = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    // Toggle: same star again clears default
-    setDefaultSearchId((prev) => (prev === id ? '' : id));
+    if (defaultSearchId === id) {
+      setDefaultSearchId('');
+      return;
+    }
+    setDefaultSearchId(id);
+    const search = savedSearches.find((s) => s.id === id);
+    if (search) applySavedSearch(search);
   };
 
-  // Resolve which saved search is “active” for the current form criteria
-  const displaySelectedId = (() => {
-    const draftFp = criteriaFingerprint(currentCriteria);
-    if (selectedSearchId) {
-      const sel = savedSearches.find((s) => s.id === selectedSearchId);
-      if (sel) {
-        const selFp = criteriaFingerprint(sel.criteria);
-        if (!draftFp || draftFp === selFp || draftFp === selectedCriteriaFp.current) {
-          return selectedSearchId;
-        }
-      }
-    }
-    if (defaultSearch && draftFp && draftFp === criteriaFingerprint(defaultSearch.criteria)) {
-      return defaultSearch.id;
-    }
-    if (draftFp) {
-      const match = savedSearches.find((s) => criteriaFingerprint(s.criteria) === draftFp);
-      if (match) return match.id;
-    }
-    return '';
-  })();
+  const displaySelectedId = useMemo(
+    () =>
+      resolveDisplaySelectedId(
+        currentCriteria,
+        selectedSearchId,
+        savedSearches,
+        defaultSearchId,
+      ),
+    [currentCriteria, selectedSearchId, savedSearches, defaultSearchId],
+  );
 
   const activeSavedSearch = displaySelectedId
     ? savedSearches.find((s) => s.id === displaySelectedId) ?? null
@@ -229,128 +241,145 @@ export function SavedSearches({
         }}
       >
         {savedSearches.length > 0 && (
-        <FormControl
-          sx={{ minWidth: compact ? 220 : '100%', flex: 1 }}
-          size="small"
-          variant="outlined"
-        >
-          {activeSavedSearch && (
-            <InputLabel
-              id="saved-search-active-label"
-              shrink
-              sx={{
-                fontWeight: 700,
-                color: 'primary.main',
-                '&.Mui-focused': { color: 'primary.main' },
+          <FormControl
+            sx={{ minWidth: compact ? 220 : '100%', flex: 1 }}
+            size="small"
+            variant="outlined"
+          >
+            {activeSavedSearch && (
+              <InputLabel
+                id="saved-search-active-label"
+                shrink
+                sx={{
+                  fontWeight: 700,
+                  color: 'primary.main',
+                  '&.Mui-focused': { color: 'primary.main' },
+                }}
+              >
+                {t('materialSearch.savedSearches.currentLabel', 'חיפוש נוכחי')}
+              </InputLabel>
+            )}
+            <Select
+              labelId={activeSavedSearch ? 'saved-search-active-label' : undefined}
+              label={
+                activeSavedSearch
+                  ? t('materialSearch.savedSearches.currentLabel', 'חיפוש נוכחי')
+                  : undefined
+              }
+              value={displaySelectedId}
+              onChange={(e) => handleApplySearch(String(e.target.value))}
+              displayEmpty
+              notched={!!activeSavedSearch}
+              sx={
+                compact
+                  ? {
+                      color: '#334155',
+                      bgcolor: '#fff',
+                      '& .MuiSelect-select': {
+                        color: '#334155',
+                        fontWeight: activeSavedSearch ? 600 : 400,
+                      },
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: displaySelectedId
+                          ? 'rgba(79,70,229,0.45)'
+                          : 'rgba(79,70,229,0.25)',
+                      },
+                      '&:hover': {
+                        bgcolor: '#F8FAFC',
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'rgba(79,70,229,0.45)',
+                        },
+                      },
+                      '&.Mui-focused': {
+                        bgcolor: '#fff',
+                        boxShadow: '0 0 0 3px rgba(79,70,229,0.12)',
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4F46E5' },
+                      },
+                      '& .MuiSvgIcon-root': { color: '#64748B' },
+                    }
+                  : activeSavedSearch
+                    ? { '& .MuiSelect-select': { fontWeight: 600 } }
+                    : {}
+              }
+              renderValue={(selected) => {
+                if (!selected) {
+                  return (
+                    <span style={{ color: '#94A3B8' }}>
+                      {t('materialSearch.savedSearches.select')}
+                    </span>
+                  );
+                }
+                const search = savedSearches.find((s) => s.id === selected);
+                if (!search) return '';
+                const isDef = defaultSearchId === search.id;
+                return (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                    {isDef && (
+                      <StarIcon sx={{ fontSize: '1rem', color: '#F59E0B', flexShrink: 0 }} />
+                    )}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {search.name}
+                    </span>
+                  </Box>
+                );
               }}
             >
-              {t('materialSearch.savedSearches.currentLabel', 'חיפוש נוכחי')}
-            </InputLabel>
-          )}
-          <Select
-            labelId={activeSavedSearch ? 'saved-search-active-label' : undefined}
-            label={
-              activeSavedSearch
-                ? t('materialSearch.savedSearches.currentLabel', 'חיפוש נוכחי')
-                : undefined
-            }
-            value={displaySelectedId}
-            onChange={(e) => handleApplySearch(String(e.target.value))}
-            displayEmpty
-            notched={!!activeSavedSearch}
-            sx={
-              compact
-                ? {
-                    color: '#334155',
-                    bgcolor: '#fff',
-                    '& .MuiSelect-select': { color: '#334155', fontWeight: activeSavedSearch ? 600 : 400 },
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: displaySelectedId
-                        ? 'rgba(79,70,229,0.45)'
-                        : 'rgba(79,70,229,0.25)',
-                    },
-                    '&:hover': {
-                      bgcolor: '#F8FAFC',
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(79,70,229,0.45)' },
-                    },
-                    '&.Mui-focused': {
-                      bgcolor: '#fff',
-                      boxShadow: '0 0 0 3px rgba(79,70,229,0.12)',
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4F46E5' },
-                    },
-                    '& .MuiSvgIcon-root': { color: '#64748B' },
-                  }
-                : activeSavedSearch
-                  ? { '& .MuiSelect-select': { fontWeight: 600 } }
-                  : {}
-            }
-            renderValue={(selected) => {
-              if (!selected) {
+              <MenuItem value="" disabled>
+                <span style={{ color: '#94A3B8' }}>{t('materialSearch.savedSearches.select')}</span>
+              </MenuItem>
+              {savedSearches.map((search) => {
+                const isDefault = defaultSearchId === search.id;
                 return (
-                  <span style={{ color: '#94A3B8' }}>
-                    {t('materialSearch.savedSearches.select')}
-                  </span>
-                );
-              }
-              const search = savedSearches.find((s) => s.id === selected);
-              if (!search) return '';
-              const isDef = defaultSearchId === search.id;
-              return (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-                  {isDef && (
-                    <StarIcon sx={{ fontSize: '1rem', color: '#F59E0B', flexShrink: 0 }} />
-                  )}
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{search.name}</span>
-                </Box>
-              );
-            }}
-          >
-            <MenuItem value="" disabled>
-              <span style={{ color: '#94A3B8' }}>{t('materialSearch.savedSearches.select')}</span>
-            </MenuItem>
-            {savedSearches.map((search) => {
-              const isDefault = defaultSearchId === search.id;
-              return (
-                <MenuItem
-                  key={search.id}
-                  value={search.id}
-                  sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, pr: 0.5 }}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, flex: 1 }}>
-                    {isDefault && (
-                      <StarIcon sx={{ fontSize: '1rem', color: 'warning.main', flexShrink: 0 }} />
-                    )}
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{search.name}</span>
-                  </Box>
-                  <Box sx={{ display: 'flex', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                    <Tooltip
-                      title={
-                        isDefault
-                          ? t('materialSearch.savedSearches.isDefault', 'ברירת מחדל לפתיחת המסך')
-                          : t('materialSearch.savedSearches.setDefault', 'הגדר כברירת מחדל בפתיחה')
-                      }
+                  <MenuItem
+                    key={search.id}
+                    value={search.id}
+                    sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, pr: 0.5 }}
+                  >
+                    <Box
+                      sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, flex: 1 }}
                     >
-                      <IconButton
-                        size="small"
-                        onClick={(e) => handleSetDefault(search.id, e)}
-                        aria-label="set default"
+                      {isDefault && (
+                        <StarIcon sx={{ fontSize: '1rem', color: 'warning.main', flexShrink: 0 }} />
+                      )}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {search.name}
+                      </span>
+                    </Box>
+                    <Box sx={{ display: 'flex', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                      <Tooltip
+                        title={
+                          isDefault
+                            ? t(
+                                'materialSearch.savedSearches.isDefault',
+                                'ברירת מחדל לפתיחת המסך',
+                              )
+                            : t(
+                                'materialSearch.savedSearches.setDefault',
+                                'הגדר כברירת מחדל בפתיחה',
+                              )
+                        }
                       >
-                        {isDefault ? (
-                          <StarIcon fontSize="small" color="warning" />
-                        ) : (
-                          <StarBorderIcon fontSize="small" />
-                        )}
+                        <IconButton
+                          size="small"
+                          onClick={(e) => handleSetDefault(search.id, e)}
+                          aria-label="set default"
+                        >
+                          {isDefault ? (
+                            <StarIcon fontSize="small" color="warning" />
+                          ) : (
+                            <StarBorderIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </Tooltip>
+                      <IconButton size="small" onClick={(e) => handleDeleteSearch(search.id, e)}>
+                        <DeleteIcon fontSize="small" />
                       </IconButton>
-                    </Tooltip>
-                    <IconButton size="small" onClick={(e) => handleDeleteSearch(search.id, e)}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                </MenuItem>
-              );
-            })}
-          </Select>
-        </FormControl>
+                    </Box>
+                  </MenuItem>
+                );
+              })}
+            </Select>
+          </FormControl>
         )}
 
         <Button
@@ -382,7 +411,15 @@ export function SavedSearches({
         </Button>
       </Box>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={dialogOpen}
+        onClose={() => {
+          setDialogOpen(false);
+          setSaveAsDefault(false);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>{t('materialSearch.savedSearches.saveTitle')}</DialogTitle>
         <DialogContent>
           <TextField
@@ -398,9 +435,30 @@ export function SavedSearches({
               if (e.key === 'Enter') handleSaveSearch();
             }}
           />
+          <FormControlLabel
+            sx={{ mt: 1.5 }}
+            control={
+              <Checkbox
+                checked={saveAsDefault}
+                onChange={(e) => setSaveAsDefault(e.target.checked)}
+                size="small"
+              />
+            }
+            label={t(
+              'materialSearch.savedSearches.saveAsDefault',
+              'הגדר כברירת מחדל בפתיחת המסך',
+            )}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>{t('materialSearch.savedSearches.cancel')}</Button>
+          <Button
+            onClick={() => {
+              setDialogOpen(false);
+              setSaveAsDefault(false);
+            }}
+          >
+            {t('materialSearch.savedSearches.cancel')}
+          </Button>
           <Button onClick={handleSaveSearch} variant="contained" disabled={!newSearchName.trim()}>
             {t('materialSearch.savedSearches.save')}
           </Button>

@@ -7,11 +7,12 @@ import {
   checkedRowsState,
 } from '../state/search.state';
 import { defaultCriteria } from '../defaultCriteria';
+import { suppressDefaultAutoSeed } from '../utils/sessionDefaultSavedSearch';
 
 /**
- * Leave results view → criteria screen.
- * Keeps last applied criteria (so default saved search does not wipe user fields).
- * Pass `resetCriteria: true` to wipe filters to product default (empty).
+ * Leave results view → empty criteria screen.
+ * Always wipes applied criteria (URL + atom) so clear/F5 never re-show old filters.
+ * Suppresses default auto-seed until full page reload.
  */
 export function useClearSearch() {
   const queryClient = useQueryClient();
@@ -20,11 +21,10 @@ export function useClearSearch() {
   const setCheckedRows = useSetRecoilState(checkedRowsState);
 
   return useCallback(
-    (opts?: { clearSelection?: boolean; resetCriteria?: boolean }) => {
+    (opts?: { clearSelection?: boolean }) => {
+      suppressDefaultAutoSeed();
       void queryClient.cancelQueries({ queryKey: ['materials', 'search', 'infinite'] });
-      if (opts?.resetCriteria) {
-        setCriteria({ ...defaultCriteria });
-      }
+      setCriteria({ ...defaultCriteria });
       setSearchSubmitted(false);
       if (opts?.clearSelection !== false) {
         setCheckedRows([]);
