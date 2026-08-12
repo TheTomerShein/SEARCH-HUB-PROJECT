@@ -23,6 +23,7 @@ import {
   ROW_HEIGHT,
 } from '../utils/columnLayout';
 import { useToast } from '../../../hooks/useToast';
+import { copyToClipboard } from '../../../utils/copyToClipboard';
 import {
   MaterialResultRow,
   type MaterialResultItemData,
@@ -127,13 +128,12 @@ export function VirtualizedMaterialList() {
 
   const handleCopyMatnr = useCallback(
     async (matnr: string) => {
-      try {
-        await navigator.clipboard.writeText(matnr);
+      const ok = await copyToClipboard(matnr);
+      if (ok) {
         showToast(
           t('materialSearch.actions.matnrCopied', { matnr, defaultValue: `הועתק: ${matnr}` }),
         );
-      } catch (err) {
-        console.error('Failed to copy material number', err);
+      } else {
         showToast(t('materialSearch.actions.copyFailed', 'ההעתקה נכשלה'), 'error');
       }
     },

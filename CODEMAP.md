@@ -74,9 +74,10 @@ Last updated: 2026-08-06 (architecture split: types/service seams, credentials e
 | `utils/resolveOutputColumns.ts` | Column selection | Active keys **in user order** → table + Excel (MATNR pinned first) |
 | `utils/projectRowsForExport.ts` | Excel projection | Rows + fields → plain objects via `getRowFieldValue` + `formatFieldValueAsString` |
 | `utils/columnLayout.ts` | Table layout | Pin widths, row/header heights, scroll fields |
-| `utils/criteriaUrlCodec.ts` | URL encode/decode | Shared by atom effect + share link |
+| `utils/criteriaUrlCodec.ts` | URL encode/decode | Shared by atom effect + share link (ignores `sap-*` params) |
 | `utils/formatFieldValue.ts` | String formatters | Shared list/compare/export field text |
 | `utils/paging.ts` | Page sizes | `SEARCH_PAGE_SIZE`, `REQUEST_DEFAULT_TOP`, `EXPORT_PAGE_SIZE` |
+| `utils/copyToClipboard.ts`| Clipboard copy | Iframe-safe `execCommand` fallback for SAP Fiori Launchpad |
 
 ### Hooks
 
@@ -171,6 +172,7 @@ Last updated: 2026-08-06 (architecture split: types/service seams, credentials e
 
 | Date | Note |
 |------|------|
+| 2026-08-12 | Env-specific build scripts (`.env.qas` etc.), Fiori iframe clipboard fixes (`copyToClipboard.ts`), URL codec `sap-*` param filtering, layout adjustments |
 | 2026-08-06 | Split types (`domain`/`rowAccess`), service (Mock/Http/catalog/contract), URL codec, format helpers, clear/transfer hooks; credentials env-only; `selectedResultRowIdState` |
 | 2026-07-27 | Dead-code purge; multi-filter URL restore; defaults MATNR/WERKS/MATKL/MEINS |
 | 2026-07-26 | UI polish / perf pass / initial CODEMAP |

@@ -78,27 +78,21 @@ npm run dev
 
 ### Real API
 
-Create `.env.local` (do **not** commit secrets):
+The project uses environment-specific `.env` files to target different SAP systems:
 
-```env
-VITE_USE_REAL_API=true
-# Local: empty — Vite proxies /api → https://mdg.dev.erp.idf (see vite.config.ts)
-VITE_API_BASE_URL=
-```
+*   `.env.dev` — Dev system (`https://mdg.dev.erp.idf`)
+*   `.env.qas` — QAS system (`https://mdg.qas.erp.idf`)
+*   `.env.preprod` — Pre-prod system
+*   `.env.production` — Prod system
 
-**Deploy (UI on GW, API on MDG):**
+When running locally, `vite.config.ts` reads the `VITE_API_BASE_URL` from the active environment and automatically configures a proxy to bypass CORS.
 
-```env
-VITE_USE_REAL_API=true
-VITE_API_BASE_URL=https://mdg.dev.erp.idf
-```
-
-Empty base on GW calls `https://<gw-host>/api/...` → **404** (fields API lives on MDG, not GW).  
-Cross-origin MDG calls need CORS (+ no 302 on the API path) **or** reverse-proxy `/api` on GW to MDG and keep base empty.
+**Deploying to SAP Gateway (GW):**
+If the UI is hosted on GW but the API is on MDG, the `VITE_API_BASE_URL` in the respective `.env` file will point cross-origin to MDG. Make sure MDG is configured for CORS or use a reverse-proxy on the GW.
 
 ```bash
-npm run build
-npm run preview
+npm run build:qas    # Builds static files targeting the QAS backend
+npm run build:prod   # Builds static files targeting the PROD backend
 ```
 
 ## Search API contract (HTTP)
@@ -125,9 +119,12 @@ Response materials may use wire keys (`maraMatnr`, …). The HTTP service normal
 ## Scripts
 
 ```bash
-npm run dev       # Vite dev server
-npm run build     # tsc -b && vite build
-npm run preview   # preview production build
+npm run dev           # Vite dev server (defaults to DEV)
+npm run dev:qas       # Vite dev server proxying to QAS
+npm run build:dev     # Build targeting DEV
+npm run build:qas     # Build targeting QAS
+npm run build:prod    # Build targeting PROD
+npm run preview       # preview production build
 ```
 
 Prettier is available as a devDependency; no test runner is wired yet (pure helpers under `api/` are good first unit-test targets).

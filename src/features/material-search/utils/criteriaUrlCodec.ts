@@ -17,11 +17,12 @@ function parseCriteriaParam(key: string, v: string): string | boolean | string[]
   return v;
 }
 
-/** Read criteria from current location (skips f/c). */
+/** Read criteria from current location (skips f/c and SAP system params). */
 export function criteriaFromSearchParams(params: URLSearchParams): SearchCriteria | null {
   const criteria: Record<string, string | boolean | string[]> = {};
   params.forEach((v, k) => {
-    if (!RESERVED.has(k)) {
+    // Skip reserved display params and SAP-injected system params (sap-language, sap-client, etc.)
+    if (!RESERVED.has(k) && !k.startsWith('sap-')) {
       criteria[k] = parseCriteriaParam(k, v);
     }
   });

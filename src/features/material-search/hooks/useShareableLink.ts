@@ -20,6 +20,8 @@ function buildShareableUrl(
   return url.toString();
 }
 
+import { copyToClipboard } from '../../../utils/copyToClipboard';
+
 /**
  * Returns a `copyLink` function that builds the shareable URL from Recoil
  * and copies it to the clipboard. Returns true if copy succeeded.
@@ -30,12 +32,7 @@ export function useShareableLink() {
 
   const copyLink = async (): Promise<boolean> => {
     const url = buildShareableUrl(criteria, outputFields);
-    try {
-      await navigator.clipboard.writeText(url);
-      return true;
-    } catch {
-      return false;
-    }
+    return copyToClipboard(url);
   };
 
   return { copyLink };

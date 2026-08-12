@@ -18,6 +18,7 @@ import { Material, getResultRowId, getRowMatnr } from '../types/material';
 import { resolveOutputColumns } from '../utils/resolveOutputColumns';
 import { projectRowsForExport } from '../utils/projectRowsForExport';
 import { useToast } from '../../../hooks/useToast';
+import { copyToClipboard } from '../../../utils/copyToClipboard';
 
 /** Shared export / copy MATNR actions for TopBar (selection or full list). */
 export function useBulkMaterialActions() {
@@ -62,8 +63,12 @@ export function useBulkMaterialActions() {
       const rows = await resolveRows();
       if (rows.length === 0) return;
       const matnrs = [...new Set(rows.map((m) => getRowMatnr(m)).filter(Boolean))];
-      await navigator.clipboard.writeText(matnrs.join('\n'));
-      showToast(t('materialSearch.actions.materialsCopied', 'החומרים הועתקו ללוח בהצלחה!'));
+      const ok = await copyToClipboard(matnrs.join('\n'));
+      if (ok) {
+        showToast(t('materialSearch.actions.materialsCopied', 'החומרים הועתקו ללוח בהצלחה!'));
+      } else {
+        showToast(t('materialSearch.actions.copyFailed', 'ההעתקה נכשלה'), 'error');
+      }
     } catch (error) {
       console.error('Failed to copy materials', error);
       showToast(t('materialSearch.actions.copyFailed', 'ההעתקה נכשלה'), 'error');

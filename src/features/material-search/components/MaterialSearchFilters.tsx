@@ -672,18 +672,18 @@ const OptionsMultiField = memo(function OptionsMultiField({
 
   const fieldChrome = error
     ? {
-        ...autoSx,
-        '& .MuiOutlinedInput-root': {
-          ...autoSx['& .MuiOutlinedInput-root'],
-          bgcolor: '#FFF',
-          '& fieldset': { borderColor: '#F43F5E', borderRadius: '10px' },
-          '&.Mui-focused': {
-            bgcolor: '#FFFFFF',
-            boxShadow: '0 0 0 3px rgba(244, 63, 94, 0.12)',
-          },
-          '&.Mui-focused fieldset': { borderColor: '#F43F5E', borderWidth: '1px' },
+      ...autoSx,
+      '& .MuiOutlinedInput-root': {
+        ...autoSx['& .MuiOutlinedInput-root'],
+        bgcolor: '#FFF',
+        '& fieldset': { borderColor: '#F43F5E', borderRadius: '10px' },
+        '&.Mui-focused': {
+          bgcolor: '#FFFFFF',
+          boxShadow: '0 0 0 3px rgba(244, 63, 94, 0.12)',
         },
-      }
+        '&.Mui-focused fieldset': { borderColor: '#F43F5E', borderWidth: '1px' },
+      },
+    }
     : requiredEmpty
       ? autoSxRequiredEmpty
       : autoSx;
@@ -1186,11 +1186,11 @@ export function MaterialSearchFilters({
           flexDirection: grid ? undefined : 'column',
           gridTemplateColumns: grid
             ? {
-                xs: 'minmax(0, 1fr)',
-                sm: 'repeat(2, minmax(0, 1fr))',
-                md: 'repeat(3, minmax(0, 1fr))',
-                lg: 'repeat(4, minmax(0, 1fr))',
-              }
+              xs: 'minmax(0, 1fr)',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              md: 'repeat(3, minmax(0, 1fr))',
+              lg: 'repeat(4, minmax(0, 1fr))',
+            }
             : undefined,
           gap: grid ? { xs: 1.25, sm: 1.5, md: 1.75 } : 1.5,
           columnGap: grid ? { xs: 1.5, sm: 2, md: 2.25 } : undefined,
@@ -1259,15 +1259,15 @@ export function MaterialSearchFilters({
           px: grid ? 1.5 : 0,
           ...(stickyActions || fillViewport
             ? {
-                position: 'relative',
-                bgcolor: fillViewport ? 'rgba(255,255,255,0.98)' : 'background.paper',
-                pb: 1.25,
-                zIndex: 2,
-                // Soft dock — no hard divider (user preference)
-                boxShadow: fillViewport
-                  ? '0 -10px 24px -12px rgba(15, 23, 42, 0.08)'
-                  : undefined,
-              }
+              position: 'relative',
+              bgcolor: fillViewport ? 'rgba(255,255,255,0.98)' : 'background.paper',
+              pb: 1.25,
+              zIndex: 2,
+              // Soft dock — no hard divider (user preference)
+              boxShadow: fillViewport
+                ? '0 -10px 24px -12px rgba(15, 23, 42, 0.08)'
+                : undefined,
+            }
             : {}),
         }}
       >
@@ -1287,26 +1287,26 @@ export function MaterialSearchFilters({
           sx={
             grid
               ? {
-                  minWidth: 130,
-                  height: 40,
-                  color: '#64748B',
-                  borderColor: '#E2E8F0',
-                  bgcolor: '#F8FAFC',
-                  fontWeight: 600,
-                  textTransform: 'none',
-                  '&:hover': {
-                    borderColor: '#CBD5E1',
-                    bgcolor: '#F1F5F9',
-                    color: '#334155',
-                    transform: 'none',
-                    boxShadow: 'none',
-                  },
-                }
+                minWidth: 130,
+                height: 40,
+                color: '#64748B',
+                borderColor: '#E2E8F0',
+                bgcolor: '#F8FAFC',
+                fontWeight: 600,
+                textTransform: 'none',
+                '&:hover': {
+                  borderColor: '#CBD5E1',
+                  bgcolor: '#F1F5F9',
+                  color: '#334155',
+                  transform: 'none',
+                  boxShadow: 'none',
+                },
+              }
               : {
-                  color: 'text.secondary',
-                  fontWeight: 600,
-                  '&:hover': { bgcolor: 'action.hover', transform: 'none', boxShadow: 'none' },
-                }
+                color: 'text.secondary',
+                fontWeight: 600,
+                '&:hover': { bgcolor: 'action.hover', transform: 'none', boxShadow: 'none' },
+              }
           }
         >
           {t('materialSearch.filters.clearFilters')}
@@ -1319,9 +1319,9 @@ export function MaterialSearchFilters({
                 ? t('materialSearch.results.loading', 'טוען חומרים...')
                 : !canSubmit
                   ? t(
-                      'materialSearch.filters.requiredBeforeSearch',
-                      'יש למלא את שדות החובה לפני חיפוש',
-                    )
+                    'materialSearch.filters.requiredBeforeSearch',
+                    'יש למלא את שדות החובה לפני חיפוש',
+                  )
                   : t('materialSearch.search', 'חיפוש')
             }
             arrow

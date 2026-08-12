@@ -43,8 +43,14 @@ function readDefaultSavedSearch(): SavedSearch | null {
  */
 const urlSyncEffect: AtomEffect<SearchCriteria> = ({ setSelf, onSet }) => {
   if (typeof window !== 'undefined') {
+    const fromUrl = criteriaFromSearchParams(new URLSearchParams(window.location.search));
     const defaultSaved = readDefaultSavedSearch();
-    if (defaultSaved) {
+
+    if (fromUrl) {
+      // URL has actual criteria (shareable link or F5). This takes precedence over default saved search.
+      setSelf(fromUrl);
+    } else if (defaultSaved) {
+      // No URL criteria, but we have a default saved search.
       setSelf({ ...defaultSaved.criteria });
       // Keep URL clean of previous session filters (default is LS, not share link).
       const clean = new URL(window.location.href);
@@ -52,9 +58,6 @@ const urlSyncEffect: AtomEffect<SearchCriteria> = ({ setSelf, onSet }) => {
       if (clean.search !== window.location.search) {
         window.history.replaceState({}, '', clean.toString());
       }
-    } else {
-      const fromUrl = criteriaFromSearchParams(new URLSearchParams(window.location.search));
-      if (fromUrl) setSelf(fromUrl);
     }
 
     onSet((newValue, _, isReset) => {
@@ -114,6 +117,15 @@ export const defaultSavedSearchIdState = atom<string>({
   effects: [localStorageEffect<string>('materialDefaultSavedSearchId')],
 });
 
+const submitOnUrlEffect: AtomEffect<boolean> = ({ setSelf }) => {
+  if (typeof window !== 'undefined') {
+    const fromUrl = criteriaFromSearchParams(new URLSearchParams(window.location.search));
+    if (fromUrl && Object.keys(fromUrl).length > 0) {
+      setSelf(true);
+    }
+  }
+};
+
 /**
  * User has explicitly submitted a search this session.
  * Always false on full page load/refresh so we open the criteria screen.
@@ -123,8 +135,8 @@ export const defaultSavedSearchIdState = atom<string>({
 export const searchSubmittedState = atom<boolean>({
   key: 'searchSubmitted',
   default: false,
+  effects: [submitOnUrlEffect],
 });
-
 
 /**
  * Detail-panel selection: getResultRowId (MATNR, or MATNR+plant).

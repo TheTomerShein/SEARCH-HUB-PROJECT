@@ -45,8 +45,8 @@ export function MaterialSearchScreen() {
               minHeight: 0,
               display: 'flex',
               justifyContent: 'center',
-              alignItems: 'center',
-              overflow: 'hidden',
+              alignItems: 'flex-start',
+              overflowY: 'auto',
               background: `
                 radial-gradient(ellipse at 20% 50%, rgba(79,70,229,0.18) 0%, transparent 60%),
                 radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.15) 0%, transparent 55%),
@@ -69,19 +69,16 @@ export function MaterialSearchScreen() {
               sx={{
                 width: '100%',
                 maxWidth: 1200,
-                // Fill pane height so card minHeight % works; card still max-capped
-                height: '100%',
-                maxHeight: '100%',
+                height: 'auto',
                 minHeight: 0,
-                px: { xs: 1.5, sm: 2, md: 3 },
-                py: { xs: 1.5, sm: 2, md: 2.5 },
+                px: { xs: 2, md: 4 },
+                pt: { xs: 5, md: 8 },
+                pb: { xs: 3, md: 5 },
                 position: 'relative',
                 zIndex: 1,
                 boxSizing: 'border-box',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'center',
-                overflow: 'hidden',
               }}
             >
               <SearchSidebar centered />
