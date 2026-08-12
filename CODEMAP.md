@@ -41,7 +41,7 @@ Last updated: 2026-08-06 (architecture split: types/service seams, credentials e
 | `types/domain.ts` | Domain + wire types | `Material`, `SearchCriteria`, `MaterialDetail` (snake_case wire), field defs, `DEFAULT_WERKS_*`; field-identity layer note |
 | `types/rowAccess.ts` | Row/key helpers | `fieldKey`, `apiResultPropName`, `getRowFieldValue`, `getRowMatnr`, **`getResultRowId`** / parse helpers, `FALLBACK_MATNR_FIELD` |
 | `types/material.ts` | Barrel | Re-exports `domain` + `rowAccess` only (no api) |
-| `fieldDefaults.ts` | Product defaults | **`DEFAULT_FIELD_NAMES`** (criteria/output/compare aliases); `resolveFieldKeys`, `ensureMatnrInOutputKeys`, **`isRealApiMode`** |
+| `fieldDefaults.ts` | Product defaults | **`DEFAULT_FIELD_NAMES`**; `resolveFieldKeys`, `ensureMatnrInOutputKeys`, **`isMockApiMode`** / `isRealApiMode` |
 | `defaultCriteria.ts` | Cleared criteria | `{}` shared by clear + filters |
 
 ### State
@@ -61,10 +61,10 @@ Last updated: 2026-08-06 (architecture split: types/service seams, credentials e
 | `api/HttpMaterialService.ts` | HTTP impl | fields cache, search + normalize, getById |
 | `api/mockFieldCatalog.ts` | Mock field lists | `MOCK_INPUT_FIELDS` / `MOCK_OUTPUT_FIELDS` |
 | `api/buildSearchRequest.ts` | Criteria → API body | Flat UI → `{ skip, top, filters[] }` |
-| `api/matchMaterialFilters.ts` | Mock filter eval | `matchesMaterialFilters` |
+| `api/mockMatchMaterialFilters.ts` | Mock filter eval | `mockMatchesMaterialFilters` |
 | `api/normalizeSearchResult.ts` | Wire → domain rows | `maraMatnr` → bare keys |
 | `api/normalizeFieldsConfig.ts` | Wire → field meta | Casing/OData/ABAP types (import from **api**, not types barrel) |
-| `api/mapMaterialToDetail.ts` | Mock list → detail | Wire-shaped detail for mock |
+| `api/mockMapMaterialToDetail.ts` | Mock list → detail | `mockMapMaterialToDetail` |
 | `api/postMaterialsMessage.ts` | External handoff | Open **דוח שגויים** + `postMessage` |
 
 ### Feature utils
@@ -96,7 +96,7 @@ Last updated: 2026-08-06 (architecture split: types/service seams, credentials e
 
 | File | Role | What’s inside |
 |------|------|----------------|
-| `mocks/materialMockGenerator.ts` | Deterministic mock data | LCG generator |
+| `mocks/mockMaterialGenerator.ts` | Deterministic mock data | `generateMockMaterials` |
 
 ### Screens & chrome
 

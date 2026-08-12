@@ -17,8 +17,14 @@ export const DEFAULT_CRITERIA_FIELD_NAMES = DEFAULT_FIELD_NAMES;
 export const DEFAULT_OUTPUT_FIELD_NAMES = DEFAULT_FIELD_NAMES;
 export const DEFAULT_COMPARE_FIELD_NAMES = DEFAULT_FIELD_NAMES;
 
+/** True when calling the real HTTP API (not mock data). */
 export function isRealApiMode(): boolean {
   return useRealApi;
+}
+
+/** True when using in-browser MockMaterialService data. */
+export function isMockApiMode(): boolean {
+  return !useRealApi;
 }
 
 /** Map bare field names → fieldKey() for fields present in config (order preserved). */

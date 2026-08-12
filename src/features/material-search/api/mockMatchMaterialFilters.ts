@@ -102,8 +102,11 @@ function matchFilterClause(m: Material, clause: SearchFilterClause): boolean {
   return values.includes(asString(raw));
 }
 
-/** All clauses must match (AND of filters). */
-export function matchesMaterialFilters(m: Material, filters: SearchFilterClause[]): boolean {
+/**
+ * Mock-only: evaluate filter clauses against an in-memory Material row.
+ * All clauses must match (AND).
+ */
+export function mockMatchesMaterialFilters(m: Material, filters: SearchFilterClause[]): boolean {
   for (const clause of filters) {
     if (!matchFilterClause(m, clause)) return false;
   }

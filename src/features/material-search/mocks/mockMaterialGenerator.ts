@@ -1,8 +1,8 @@
 import type { Material, MaterialType, IndustrySector, BaseUnitOfMeasure } from '../types/material';
 import { DEFAULT_WERKS_LABELS } from '../types/material';
 
-// Deterministic Pseudo-Random Generator (LCG)
-class LCG {
+/** Deterministic PRNG used only by mock material generation. */
+class MockLcg {
   private seed: number;
   constructor(seed: number = 42) {
     this.seed = seed;
@@ -65,8 +65,9 @@ const CONTAINER_REQS = ['01', '02', 'B1', 'C2'];
 const STORAGE_LOCS = ['0001', '0002', 'RAW1', 'FIN1', 'QA01'];
 const PRIORITIES = ['1', '2', '3'];
 
+/** Build in-memory mock materials for MockMaterialService. */
 export function generateMockMaterials(count: number = 4000): Material[] {
-  const lcg = new LCG(123456); // Use a fixed seed for deterministic outputs
+  const lcg = new MockLcg(123456); // fixed seed → deterministic mock rows
   const materials: Material[] = [];
 
   // Track matnr sequences per type to generate realistic SAP numbers

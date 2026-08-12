@@ -1,6 +1,6 @@
 import type { Material, SearchCriteria } from '../types/material';
 import { logger } from '../../../utils/logger';
-import { isRealApiMode } from '../fieldDefaults';
+import { isMockApiMode } from '../fieldDefaults';
 import { EXPORT_PAGE_SIZE } from '../utils/paging';
 import type { MaterialService } from './serviceContract';
 import { MockMaterialService } from './MockMaterialService';
@@ -8,11 +8,14 @@ import { HttpMaterialService } from './HttpMaterialService';
 
 export type { MaterialService } from './serviceContract';
 
-export const materialServiceInstance: MaterialService = isRealApiMode()
-  ? new HttpMaterialService()
-  : new MockMaterialService();
+/** Real HTTP or mock data service (see `isMockApiMode()` / VITE_USE_REAL_API). */
+export const materialServiceInstance: MaterialService = isMockApiMode()
+  ? new MockMaterialService()
+  : new HttpMaterialService();
 
-logger.info(`[materialService] Using ${isRealApiMode() ? 'HTTP' : 'Mock'} material service`);
+logger.info(
+  `[materialService] Using ${isMockApiMode() ? 'MockMaterialService' : 'HttpMaterialService'}`,
+);
 
 /** Fetch all pages for export (batch size EXPORT_PAGE_SIZE). */
 export async function fetchAllMaterials(criteria: SearchCriteria): Promise<Material[]> {

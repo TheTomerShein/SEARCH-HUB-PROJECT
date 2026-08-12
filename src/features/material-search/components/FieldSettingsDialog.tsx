@@ -29,7 +29,7 @@ import { activeSearchFieldsState, activeOutputFieldsState, activeCompareFieldsSt
 import { useSearchFieldsQuery, useOutputFieldsQuery } from '../hooks/useMaterialSearch';
 import { fieldKey } from '../types/material';
 import {
-  isRealApiMode,
+  isMockApiMode,
   resolveFieldKeys,
   ensureMatnrInOutputKeys,
   findFieldKeyByName,
@@ -348,7 +348,7 @@ export function FieldSettingsDialog({ open, onClose, initialTab = 0 }: FieldSett
       ? ensureMatnrInOutputKeys(draftOutput, outputFields)
       : draftOutput;
     setActiveOutputFields(outputToSave);
-    if (!isRealApiMode() && draftCompare.length === allOutputKeys.length) {
+    if (isMockApiMode() && draftCompare.length === allOutputKeys.length) {
       setActiveCompareFields(null);
     } else {
       setActiveCompareFields(draftCompare);

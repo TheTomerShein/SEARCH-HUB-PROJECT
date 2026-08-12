@@ -10,7 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
-*.local
+# *.local — removed: env files are committed (no secrets in this repo)
 
 # Editor directories and files
 .vscode/*
